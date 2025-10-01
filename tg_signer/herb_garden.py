@@ -65,16 +65,26 @@ class HerbGarden:
     
     def __init__(
         self, 
+        config,
+        state_store,
+        command_queue,
         chat_id: int, 
-        account: str,
-        default_seed: str = "凝血草种子",
-        seed_configs: Dict[str, Dict] = None
+        account: str
     ):
+        self.config = config.herb_garden
+        self.state_store = state_store
+        self.command_queue = command_queue
         self.chat_id = chat_id
         self.account = account
-        self.default_seed = default_seed
-        self.seed_configs = seed_configs or {}
+        self.state_key = f"acct_{account}_chat_{chat_id}_herb"
+        
+        self.default_seed = self.config.default_seed if hasattr(self.config, 'default_seed') else "凝血草种子"
+        self.seed_configs = self.config.seeds if hasattr(self.config, 'seeds') else {}
         self.state = HerbGardenState()
+        
+        # Load state
+        state_data = state_store.load("herb_state.json")
+        self.load_state(state_data.get(self.state_key, {}))
     
     def load_state(self, state_data: Dict[str, Any]):
         """从持久化数据加载状态"""
@@ -318,3 +328,96 @@ class HerbGarden:
             return True
         
         return False
+    
+    async def start(self):
+        """启动小药园模块"""
+        if not self.config.enabled:
+            logger.info("[药园] 小药园自动化已禁用")
+            return
+        
+        logger.info("[药园] 启动小药园自动化模块")
+        
+        # 初始扫描
+        await self.command_queue.enqueue(
+            ".小药园",
+            priority=2,
+            dedupe_key=f"herb:scan:{self.chat_id}"
+        )
+    
+    async def handle_message(self, message) -> bool:
+        """处理消息"""
+        if not message.text:
+            return False
+        
+        text = message.text
+        
+        # 检查是否是小药园响应
+        if "灵田" in text or "小药园" in text:
+            # 解析状态
+            self.parse_garden_status(text)
+            self._save_state()
+            
+            # 调度维护/采药任务
+            for command, priority, delay in self.get_maintenance_and_harvest_commands():
+                await self.command_queue.enqueue(
+                    command,
+                    when=time.time() + delay,
+                    priority=priority,
+                    dedupe_key=f"herb:{command}:{self.chat_id}"
+                )
+            
+            return True
+        
+        # 检查维护响应
+        for action in ["除虫", "除草", "浇水"]:
+            if action in text:
+                success = self.parse_maintenance_response(text, action)
+                if success:
+                    self._save_state()
+                    # 维护完成后重新扫描
+                    await self.command_queue.enqueue(
+                        ".小药园",
+                        when=time.time() + 5,
+                        priority=2,
+                        dedupe_key=f"herb:scan:{self.chat_id}"
+                    )
+                return True
+        
+        # 检查采药响应
+        if "采药" in text:
+            success = self.parse_harvest_response(text)
+            if success:
+                self._save_state()
+                # 采药成功后播种
+                for command, priority, delay in self.generate_planting_commands():
+                    await self.command_queue.enqueue(
+                        command,
+                        when=time.time() + delay,
+                        priority=priority,
+                        dedupe_key=f"herb:plant:{self.chat_id}"
+                    )
+            return True
+        
+        # 检查播种响应
+        if "播种" in text or "种植" in text:
+            # 简单解析（需要更精确的匹配）
+            self._save_state()
+            return True
+        
+        return False
+    
+    def _save_state(self):
+        """保存状态到持久化存储"""
+        state_data = self.state_store.load("herb_state.json")
+        state_data[self.state_key] = self.save_state()
+        self.state_store.save("herb_state.json", state_data)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """获取状态"""
+        return {
+            "plots_count": len(self.state.plots),
+            "mature_count": sum(1 for p in self.state.plots if p.state == PlotState.MATURE),
+            "growing_count": sum(1 for p in self.state.plots if p.state == PlotState.GROWING),
+            "idle_count": sum(1 for p in self.state.plots if p.state == PlotState.IDLE),
+            "last_scan_ts": self.state.last_scan_ts,
+        }

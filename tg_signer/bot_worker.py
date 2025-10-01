@@ -21,6 +21,10 @@ from .xiaozhi_client import XiaozhiClient, create_xiaozhi_client
 from .core import Client, get_proxy
 from .activity_manager import ActivityManager
 from .yuanying_tasks import YuanYingTasks
+from .daily_routine import DailyRoutine
+from .periodic_tasks import PeriodicTasks
+from .herb_garden import HerbGarden
+from .star_observation import StarObservation
 
 logger = logging.getLogger("tg-signer.bot")
 
@@ -148,6 +152,26 @@ class ChannelBot:
         if config.xiaozhi_ai.authorized_users:
             self.xiaozhi_client = self._load_xiaozhi_client(xiaozhi_config_path)
         
+        # Initialize Daily Routine (每日例行)
+        self.daily_routine = DailyRoutine(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        
+        # Initialize Periodic Tasks (周期任务)
+        self.periodic_tasks = PeriodicTasks(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        
+        # Initialize Herb Garden (小药园)
+        self.herb_garden = HerbGarden(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        
+        # Initialize Star Observation (观星台)
+        self.star_observation = StarObservation(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        
         # Initialize YuanYing Tasks (元婴任务)
         self.yuanying_tasks = YuanYingTasks(
             config, self.state_store, self.command_queue, config.chat_id, account
@@ -221,12 +245,12 @@ class ChannelBot:
         asyncio.create_task(self._command_processor())
         asyncio.create_task(self._daily_reset_task())
         
-        # Start YuanYing tasks if enabled
+        # Start all modules
+        await self.daily_routine.start()
+        await self.periodic_tasks.start()
+        await self.herb_garden.start()
+        await self.star_observation.start()
         await self.yuanying_tasks.start()
-        
-        # Initialize daily tasks if enabled
-        if self.config.daily.enable_sign_in:
-            await self._schedule_daily_signin()
     
     async def stop(self):
         """Stop the bot"""
@@ -253,13 +277,36 @@ class ChannelBot:
         try:
             handled = False
             
-            # First, check YuanYing tasks module
-            if await self.yuanying_tasks.handle_message(message):
+            # Check modules in order (following ARCHITECTURE.md pipeline)
+            # Daily -> Periodic -> Star -> Herb -> YuanYing -> Activity -> AI
+            
+            # 1. Daily Routine
+            if await self.daily_routine.handle_message(message):
+                handled = True
+                logger.debug("Message handled by Daily Routine")
+            
+            # 2. Periodic Tasks (闭关、引道、启阵、问道、裂缝)
+            if not handled and await self.periodic_tasks.handle_message(message):
+                handled = True
+                logger.debug("Message handled by Periodic Tasks")
+            
+            # 3. Star Observation (观星台)
+            if not handled and await self.star_observation.handle_message(message):
+                handled = True
+                logger.debug("Message handled by Star Observation")
+            
+            # 4. Herb Garden (小药园)
+            if not handled and await self.herb_garden.handle_message(message):
+                handled = True
+                logger.debug("Message handled by Herb Garden")
+            
+            # 5. YuanYing tasks (元婴)
+            if not handled and await self.yuanying_tasks.handle_message(message):
                 handled = True
                 logger.debug("Message handled by YuanYing tasks")
             
-            # Check Activity Manager for activity matching
-            if message.text and self.config.activity.enabled:
+            # 6. Check Activity Manager for activity matching
+            if not handled and message.text and self.config.activity.enabled:
                 activity_match = self.activity_manager.match_activity(
                     message.text, 
                     message,
@@ -277,11 +324,11 @@ class ChannelBot:
                     )
                     handled = True
             
-            # Check for Xiaozhi AI triggers (if not handled by activity)
+            # 7. Check for Xiaozhi AI triggers (if not handled by activity)
             if not handled and self.xiaozhi_client and message.text:
                 await self._handle_xiaozhi_message(message)
             
-            # Check for custom rules (if not handled)
+            # 8. Check for custom rules (if not handled)
             if not handled:
                 await self._handle_custom_rules(message)
             
@@ -390,26 +437,6 @@ class ChannelBot:
         except Exception as e:
             logger.error(f"Failed to send command '{command}': {e}")
     
-    async def _schedule_daily_signin(self):
-        """Schedule daily sign-in task"""
-        # Check state
-        state = self.state_store.load("daily_state.json")
-        key = f"acct_{self.account}_chat_{self.config.chat_id}"
-        
-        today = datetime.now().date().isoformat()
-        daily_state = state.get(key, {})
-        
-        if daily_state.get("last_signin_date") == today:
-            logger.info("Daily sign-in already completed today")
-            return
-        
-        # Schedule sign-in command
-        await self.command_queue.enqueue(
-            ".点卯",
-            priority=1,
-            dedupe_key=f"daily:signin:{self.config.chat_id}"
-        )
-    
     async def _daily_reset_task(self):
         """Reset daily state at midnight"""
         while self._running:
@@ -421,18 +448,14 @@ class ChannelBot:
             
             await asyncio.sleep(seconds_until_midnight)
             
-            # Reset daily state
-            state = self.state_store.load("daily_state.json")
-            key = f"acct_{self.account}_chat_{self.config.chat_id}"
-            if key in state:
-                state[key] = {}
-                self.state_store.save("daily_state.json", state)
-            
+            # Reset daily state for all modules
             logger.info("Daily state reset at midnight")
             
+            # Reset daily routine
+            self.daily_routine.reset_daily()
+            
             # Re-schedule daily tasks
-            if self.config.daily.enable_sign_in:
-                await self._schedule_daily_signin()
+            await self.daily_routine.start()
     
     async def run(self):
         """Run the bot (blocking)"""

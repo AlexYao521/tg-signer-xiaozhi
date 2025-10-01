@@ -34,10 +34,18 @@ class DailyRoutine:
     - 宗门传功（每日最多3次，需要回复自己的消息）
     """
     
-    def __init__(self, chat_id: int, account: str):
+    def __init__(self, config, state_store, command_queue, chat_id: int, account: str):
+        self.config = config.daily
+        self.state_store = state_store
+        self.command_queue = command_queue
         self.chat_id = chat_id
         self.account = account
+        self.state_key = f"acct_{account}_chat_{chat_id}_daily"
         self.state = DailyState()
+        
+        # Load state
+        state_data = state_store.load("daily_state.json")
+        self.load_state(state_data.get(self.state_key, {}))
     
     def load_state(self, state_data: Dict[str, Any]):
         """从持久化数据加载状态"""
@@ -178,3 +186,68 @@ class DailyRoutine:
             commands.append((".宗门传功", 1, 10))  # P1优先级，延迟10秒
         
         return commands
+    
+    async def start(self):
+        """启动每日任务模块"""
+        if not (self.config.enable_sign_in or self.config.enable_greeting or self.config.enable_transmission):
+            logger.info("[每日] 所有每日任务均已禁用")
+            return
+        
+        logger.info("[每日] 启动每日任务模块")
+        
+        # 调度初始任务
+        for command, priority, delay in self.get_next_commands():
+            await self.command_queue.enqueue(
+                command,
+                when=time.time() + delay,
+                priority=priority,
+                dedupe_key=f"daily:{command}:{self.chat_id}"
+            )
+    
+    async def handle_message(self, message) -> bool:
+        """处理消息"""
+        if not message.text:
+            return False
+        
+        text = message.text
+        
+        # 解析响应并更新状态
+        next_action = self.parse_response(text)
+        
+        if next_action:
+            # 保存状态
+            self._save_state()
+            
+            if next_action == "schedule_transmission":
+                # 继续调度传功任务
+                import random
+                delay = random.randint(30, 45)
+                await self.command_queue.enqueue(
+                    ".宗门传功",
+                    when=time.time() + delay,
+                    priority=1,
+                    dedupe_key=f"daily:transmission:{self.chat_id}"
+                )
+            
+            return True
+        
+        # 检查是否是点卯、问安或传功的响应
+        if any(keyword in text for keyword in ["点卯", "问安", "传功"]):
+            self._save_state()
+            return True
+        
+        return False
+    
+    def _save_state(self):
+        """保存状态到持久化存储"""
+        state_data = self.state_store.load("daily_state.json")
+        state_data[self.state_key] = self.save_state()
+        self.state_store.save("daily_state.json", state_data)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """获取状态"""
+        return {
+            "signin_done": self.state.signin_done,
+            "greeting_done": self.state.greeting_done,
+            "transmission_count": self.state.transmission_count,
+        }

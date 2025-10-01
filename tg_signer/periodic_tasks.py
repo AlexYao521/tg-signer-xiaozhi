@@ -48,10 +48,23 @@ class PeriodicTasks:
         "探寻裂缝": ".探寻裂缝",
     }
     
-    def __init__(self, chat_id: int, account: str, enabled_tasks: Dict[str, bool] = None):
+    def __init__(self, config, state_store, command_queue, chat_id: int, account: str):
+        self.config = config.periodic
+        self.state_store = state_store
+        self.command_queue = command_queue
         self.chat_id = chat_id
         self.account = account
-        self.enabled_tasks = enabled_tasks or {}
+        self.state_key = f"acct_{account}_chat_{chat_id}_periodic"
+        
+        # 提取启用的任务
+        self.enabled_tasks = {
+            "biguan": getattr(self.config, "enable_biguan", True),
+            "yindao": getattr(self.config, "enable_yindao", True),
+            "qizhen": getattr(self.config, "enable_qizhen", True),
+            "wendao": getattr(self.config, "enable_wendao", True),
+            "rift_explore": getattr(self.config, "enable_rift_explore", True),
+        }
+        
         self.state = PeriodicState()
         
         # 初始化所有任务的冷却状态
@@ -61,6 +74,10 @@ class PeriodicTasks:
                     task_name=task_name,
                     cooldown_seconds=PERIODIC_COOLDOWNS.get(task_name, 3600)
                 )
+        
+        # Load state
+        state_data = state_store.load("periodic_state.json")
+        self.load_state(state_data.get(self.state_key, {}))
     
     def load_state(self, state_data: Dict[str, Any]):
         """从持久化数据加载状态"""
@@ -211,3 +228,67 @@ class PeriodicTasks:
         cd.next_execute_ts = now + cooldown_seconds
         
         logger.info(f"[周期] 标记{task_name}已执行，下次执行时间: {cd.next_execute_ts}")
+    
+    async def start(self):
+        """启动周期任务模块"""
+        enabled_count = sum(1 for enabled in self.enabled_tasks.values() if enabled)
+        if enabled_count == 0:
+            logger.info("[周期] 所有周期任务均已禁用")
+            return
+        
+        logger.info(f"[周期] 启动周期任务模块，已启用{enabled_count}个任务")
+        
+        # 调度就绪的任务
+        for command, priority, delay in self.get_ready_tasks():
+            await self.command_queue.enqueue(
+                command,
+                when=time.time() + delay,
+                priority=priority,
+                dedupe_key=f"periodic:{command}:{self.chat_id}"
+            )
+    
+    async def handle_message(self, message) -> bool:
+        """处理消息"""
+        if not message.text:
+            return False
+        
+        text = message.text
+        
+        # 尝试匹配任务响应
+        for task_name in self.TASKS.keys():
+            if any(kw in text for kw in [task_name, self.TASKS[task_name]]):
+                cooldown = self.parse_response(text, task_name)
+                if cooldown is not None:
+                    # 保存状态
+                    self._save_state()
+                    
+                    # 如果冷却时间很短，立即调度下一次执行
+                    if cooldown < 3600:  # 小于1小时
+                        await self.command_queue.enqueue(
+                            self.TASKS[task_name],
+                            when=time.time() + cooldown + 5,  # 加5秒缓冲
+                            priority=1,
+                            dedupe_key=f"periodic:{self.TASKS[task_name]}:{self.chat_id}"
+                        )
+                    
+                    return True
+        
+        return False
+    
+    def _save_state(self):
+        """保存状态到持久化存储"""
+        state_data = self.state_store.load("periodic_state.json")
+        state_data[self.state_key] = self.save_state()
+        self.state_store.save("periodic_state.json", state_data)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """获取状态"""
+        status = {}
+        for task_name, cd in self.state.cooldowns.items():
+            if self.is_task_enabled(task_name):
+                status[task_name] = {
+                    "ready": self.should_execute(task_name),
+                    "next_execute_ts": cd.next_execute_ts,
+                    "cooldown_seconds": cd.cooldown_seconds
+                }
+        return status
