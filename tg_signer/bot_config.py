@@ -15,6 +15,7 @@ class DailyConfig(BaseModel):
 
 class PeriodicConfig(BaseModel):
     """Periodic tasks configuration"""
+    enable_biguan: bool = True  # 闭关修炼
     enable_qizhen: bool = True  # 启阵
     enable_zhuzhen: bool = True  # 助阵
     enable_wendao: bool = True  # 问道
@@ -98,8 +99,8 @@ class BotConfig(BaseModel):
     custom_rules: List[CommandResponseRule] = Field(default_factory=list)
     
     # Timing configuration
-    sign_interval: float = 10.0  # seconds between commands
-    min_send_interval: float = 1.0  # minimum interval between any sends
+    sign_interval: float = 10.0  # seconds between commands (minimum 10s for channel messages)
+    min_send_interval: float = 10.0  # minimum interval between any sends (10s minimum + boundary)
     
     class Config:
         json_schema_extra = {
@@ -112,6 +113,7 @@ class BotConfig(BaseModel):
                     "enable_greeting": False
                 },
                 "periodic": {
+                    "enable_biguan": True,
                     "enable_qizhen": True,
                     "enable_zhuzhen": True,
                     "enable_wendao": True,

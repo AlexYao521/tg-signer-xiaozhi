@@ -419,8 +419,23 @@ class ChannelBot:
             await asyncio.sleep(self.config.min_send_interval - elapsed)
         
         try:
-            await self.client.send_message(self.config.chat_id, command)
+            # Check if transmission needs reply_to
+            reply_to_message_id = None
+            if "宗门传功" in command and self.daily_routine.state.last_message_id:
+                reply_to_message_id = self.daily_routine.state.last_message_id
+                logger.debug(f"Sending transmission with reply_to: {reply_to_message_id}")
+            
+            message = await self.client.send_message(
+                self.config.chat_id, 
+                command,
+                reply_to_message_id=reply_to_message_id
+            )
             self._last_send_time = time.time()
+            
+            # Track message ID for future replies (especially for transmission)
+            if message and message.id:
+                self.daily_routine.update_last_message_id(message.id)
+            
             logger.info(f"Sent command: {command}")
         except Exception as e:
             logger.error(f"Failed to send command '{command}': {e}")
