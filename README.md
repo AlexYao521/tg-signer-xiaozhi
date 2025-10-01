@@ -38,9 +38,13 @@ tg-signer -a 账号名 bot run 我的机器人 --ai
 tg-signer -a 账号名 bot run 我的机器人
 ```
 
-**详细文档**: 
+**📚 文档导航**: 
+- 🗺️ [DOCS_INDEX.md](./DOCS_INDEX.md) - **文档索引与导航**（推荐先看）
 - 📖 [BOT_USAGE_GUIDE.md](./BOT_USAGE_GUIDE.md) - 完整使用指南
+- 🏗️ [ARCHITECTURE.md](./ARCHITECTURE.md) - 系统架构设计
+- 📊 [PROJECT_ANALYSIS.md](./PROJECT_ANALYSIS.md) - 项目分析报告
 - 📋 [INTEGRATION_STATUS.md](./INTEGRATION_STATUS.md) - 集成状态报告
+- 💼 [ENTERPRISE_TODO.md](./ENTERPRISE_TODO.md) - 企业级改进建议
 
 ### 🏗️ 模块化架构 (v1.1 更新)
 
@@ -58,10 +62,9 @@ tg-signer -a 账号名 bot run 我的机器人
 - ⚙️ `cooldown_config.py` - 冷却配置常量 (所有任务冷却时间)
 - 📝 `logger.py` - 按账号分离的日志系统 (`logs/<account>/`)
 
-**文档**:
-- 📖 [PROJECT_ARCHITECTURE.md](./PROJECT_ARCHITECTURE.md) - 完整架构文档
+**技术文档**:
+- 🏗️ [ARCHITECTURE.md](./ARCHITECTURE.md) - 完整架构设计（v1.1）
 - 📋 [COOLDOWN_RULES.md](./COOLDOWN_RULES.md) - 冷却规则详细说明
-- 💼 [ENTERPRISE_TODO.md](./ENTERPRISE_TODO.md) - 80+企业级改进建议
 - 🎭 [活动回复词.md](./活动回复词.md) - 活动响应规范
 
 **测试覆盖**:
