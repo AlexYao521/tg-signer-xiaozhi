@@ -115,5 +115,5 @@ _test*.json
 *.session
 *.session-journal
 
-.signer
 *.session_string
+/.signer/users/

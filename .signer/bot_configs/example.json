@@ -1,0 +1,40 @@
+{
+  "chat_id": -1001234567890,
+  "name": "示例频道",
+  "daily": {
+    "enable_sign_in": true,
+    "enable_transmission": true,
+    "enable_greeting": false
+  },
+  "periodic": {
+    "enable_qizhen": true,
+    "enable_zhuzhen": true,
+    "enable_wendao": true,
+    "enable_yindao": true,
+    "enable_yuanying": true,
+    "enable_rift_explore": true
+  },
+  "star_observation": {
+    "enabled": true,
+    "default_star": "天雷星",
+    "plate_count": 5,
+    "sequence": [
+      "天雷星",
+      "烈阳星",
+      "玄冰星"
+    ]
+  },
+  "herb_garden": {
+    "enabled": false
+  },
+  "xiaozhi_ai": {
+    "authorized_users": [],
+    "filter_keywords": [],
+    "blacklist_users": [],
+    "debug": false
+  },
+  "activity": {
+    "enabled": true,
+    "rules_extra": []
+  }
+}

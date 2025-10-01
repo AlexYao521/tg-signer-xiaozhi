@@ -1,0 +1,104 @@
+{
+  "SYSTEM_OPTIONS": {
+    "CLIENT_ID": "92d55b09-2bd0-4006-afcc-7c383849fc3e",
+    "DEVICE_ID": "60:45:cb:6d:04:37",
+    "NETWORK": {
+      "OTA_VERSION_URL": "https://api.tenclass.net/xiaozhi/ota/",
+      "WEBSOCKET_URL": "wss://api.tenclass.net/xiaozhi/v1/",
+      "WEBSOCKET_ACCESS_TOKEN": "test-token",
+      "MQTT_INFO": {
+        "endpoint": "mqtt.xiaozhi.me",
+        "client_id": "GID_test@@@60_45_cb_6d_04_37@@@92d55b09-2bd0-4006-afcc-7c383849fc3e",
+        "username": "eyJpcCI6IjE0MC4yNTUuMTkyLjEwOSJ9",
+        "password": "J5OiTLomoLkjYf9dRyQN+OwfTXU1aQuuZrkvkRop40c=",
+        "publish_topic": "device-server",
+        "subscribe_topic": "null"
+      },
+      "ACTIVATION_VERSION": "v2",
+      "AUTHORIZATION_URL": "https://xiaozhi.me/"
+    }
+  },
+  "WAKE_WORD_OPTIONS": {
+    "USE_WAKE_WORD": true,
+    "MODEL_PATH": "models",
+    "NUM_THREADS": 4,
+    "PROVIDER": "cpu",
+    "MAX_ACTIVE_PATHS": 2,
+    "KEYWORDS_SCORE": 1.8,
+    "KEYWORDS_THRESHOLD": 0.2,
+    "NUM_TRAILING_BLANKS": 1
+  },
+  "CAMERA": {
+    "camera_index": 0,
+    "frame_width": 640,
+    "frame_height": 480,
+    "fps": 30,
+    "Local_VL_url": "https://open.bigmodel.cn/api/paas/v4/",
+    "VLapi_key": "",
+    "models": "glm-4v-plus"
+  },
+  "SHORTCUTS": {
+    "ENABLED": true,
+    "MANUAL_PRESS": {
+      "modifier": "ctrl",
+      "key": "j",
+      "description": "按住说话"
+    },
+    "AUTO_TOGGLE": {
+      "modifier": "ctrl",
+      "key": "k",
+      "description": "自动对话"
+    },
+    "ABORT": {
+      "modifier": "ctrl",
+      "key": "q",
+      "description": "中断对话"
+    },
+    "MODE_TOGGLE": {
+      "modifier": "ctrl",
+      "key": "m",
+      "description": "切换模式"
+    },
+    "WINDOW_TOGGLE": {
+      "modifier": "ctrl",
+      "key": "w",
+      "description": "显示/隐藏窗口"
+    }
+  },
+  "AEC_OPTIONS": {
+    "ENABLED": false,
+    "BUFFER_MAX_LENGTH": 200,
+    "FRAME_DELAY": 3,
+    "FILTER_LENGTH_RATIO": 0.4,
+    "ENABLE_PREPROCESS": true
+  },
+  "AUDIO_DEVICES": {
+    "input_device_id": null,
+    "input_device_name": null,
+    "output_device_id": null,
+    "output_device_name": null,
+    "input_sample_rate": null,
+    "output_sample_rate": null
+  },
+  "GATEWAY": {
+    "ENABLED": false,
+    "MQTT": {
+      "broker_host": "localhost",
+      "broker_port": 1883,
+      "username": null,
+      "password": null
+    }
+  },
+  "TG_SIGNER": {
+    "XIAOZHI_AI": {
+      "enabled": true,
+      "protocol_type": "websocket",
+      "auto_reconnect": true,
+      "max_reconnect_attempts": 5,
+      "connect_timeout": 10,
+      "authorized_users": [123456789],
+      "trigger_keywords": ["@小智", "小智AI", "xiaozhi", "AI"],
+      "response_prefix": "小智AI回复: "
+    }
+  }
+}

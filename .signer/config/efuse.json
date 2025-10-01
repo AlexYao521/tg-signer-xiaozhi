@@ -1,0 +1,12 @@
+{
+  "mac_address": "60:45:cb:6d:04:37",
+  "serial_number": "SN-15CA49E6-6045cb6d0437",
+  "hmac_key": "a5624785210b3c7632024c2a8ca098aca41c0e5df9bf265c6e6c6d9eece30309",
+  "activation_status": true,
+  "device_fingerprint": {
+    "system": "Windows",
+    "hostname": "DESKTOP-2KPFNHF",
+    "mac_address": "60:45:cb:6d:04:37",
+    "machine_id": "038bcd2d-f298-4a6a-ae26-1dee2906d8b3"
+  }
+}
