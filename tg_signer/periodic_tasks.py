@@ -151,13 +151,14 @@ class PeriodicTasks:
         """
         tasks = []
         now = time.time()
+        delay_offset = 0  # Stagger commands to avoid slowmode
         
         for task_name, command in self.TASKS.items():
             if self.should_execute(task_name):
-                # 任务优先级都是P1
-                delay = 0
-                tasks.append((command, 1, delay))
+                # 任务优先级都是P1, 但要错开发送时间
+                tasks.append((command, 1, delay_offset))
                 logger.info(f"[周期] 任务就绪: {task_name}")
+                delay_offset += 2  # 每个任务间隔2秒
         
         return tasks
     

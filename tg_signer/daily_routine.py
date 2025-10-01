@@ -87,15 +87,15 @@ class DailyRoutine:
     
     def should_signin(self) -> bool:
         """是否应该执行宗门点卯"""
-        return not self.state.signin_done
+        return self.config.enable_sign_in and not self.state.signin_done
     
     def should_greeting(self) -> bool:
         """是否应该执行每日问安"""
-        return not self.state.greeting_done
+        return self.config.enable_greeting and not self.state.greeting_done
     
     def should_transmission(self) -> bool:
         """是否应该执行宗门传功"""
-        return self.state.transmission_count < 3
+        return self.config.enable_transmission and self.state.transmission_count < 3
     
     def parse_response(self, text: str) -> Optional[str]:
         """
@@ -175,15 +175,19 @@ class DailyRoutine:
             列表of (command, priority, delay_seconds)
         """
         commands = []
+        delay_offset = 0
         
         if self.should_signin():
-            commands.append((".宗门点卯", 0, 0))  # P0优先级，立即执行
+            commands.append((".宗门点卯", 0, delay_offset))  # P0优先级
+            delay_offset += 2
         
         if self.should_greeting():
-            commands.append((".每日问安", 1, 5))  # P1优先级，延迟5秒
+            commands.append((".每日问安", 1, delay_offset))  # P1优先级
+            delay_offset += 2
         
         if self.should_transmission():
-            commands.append((".宗门传功", 1, 10))  # P1优先级，延迟10秒
+            commands.append((".宗门传功", 1, delay_offset))  # P1优先级
+            delay_offset += 2
         
         return commands
     

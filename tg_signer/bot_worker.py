@@ -283,10 +283,27 @@ class ChannelBot:
         asyncio.create_task(self._command_processor())
         asyncio.create_task(self._daily_reset_task())
 
-        # Start all modules
+        # Start all modules with staggered delays to avoid slowmode
+        # Each module will enqueue commands with internal delays,
+        # but we also stagger module initialization to spread out enqueuing
+        module_delay = 0
+        
+        # Daily tasks first (highest priority)
         await self.daily_routine.start()
+        module_delay += 5  # Give daily tasks time to enqueue
+        
+        # Periodic tasks next
+        await asyncio.sleep(module_delay)
         await self.periodic_tasks.start()
+        module_delay = 5
+        
+        # Herb garden
+        await asyncio.sleep(module_delay)
         await self.herb_garden.start()
+        module_delay = 5
+        
+        # Star observation last
+        await asyncio.sleep(module_delay)
         await self.star_observation.start()
 
     async def stop(self):
@@ -312,6 +329,23 @@ class ChannelBot:
     async def _on_message(self, client: Client, message: Message):
         """Handle incoming messages"""
         try:
+            # Filter messages: Only process messages from the channel bot or activity bot
+            # Skip messages from regular users unless it's a reply to our message
+            if message.from_user and not message.from_user.is_bot:
+                # For non-bot messages, only process if they mention us (for activities)
+                # This prevents parsing commands/responses from other regular users
+                has_mention = False
+                if message.entities:
+                    for entity in message.entities:
+                        if entity.type.name == "MENTION" or entity.type.name == "TEXT_MENTION":
+                            has_mention = True
+                            break
+                
+                if not has_mention:
+                    # Not a bot message and doesn't mention us, skip
+                    logger.debug(f"Skipping message from non-bot user without mention: {message.from_user.id}")
+                    return
+            
             handled = False
 
             # Check modules in order (following ARCHITECTURE.md pipeline)
