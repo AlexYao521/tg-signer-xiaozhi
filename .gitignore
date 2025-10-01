@@ -90,7 +90,7 @@ ENV/
 
 # Instance
 media/
-logs/*
+logs/
 !logs/.gitkeep
 
 # Editors & IDEs
