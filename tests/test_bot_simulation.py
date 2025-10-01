@@ -158,10 +158,10 @@ async def test_command_queue_priority_ordering(mock_config):
         await bot.command_queue.enqueue(".高优先级", when=now, priority=0)
         await bot.command_queue.enqueue(".中优先级", when=now, priority=2)
 
-        # Dequeue and verify order
-        cmd1, _ = await bot.command_queue.dequeue()
-        cmd2, _ = await bot.command_queue.dequeue()
-        cmd3, _ = await bot.command_queue.dequeue()
+        # Dequeue and verify order (dequeue now returns 3 values: command, dedupe_key, callback)
+        cmd1, _, _ = await bot.command_queue.dequeue()
+        cmd2, _, _ = await bot.command_queue.dequeue()
+        cmd3, _, _ = await bot.command_queue.dequeue()
 
         # Higher priority (lower number) should come first
         assert cmd1 == ".高优先级"
@@ -239,5 +239,5 @@ async def test_dedupe_key_format_consistency(mock_config):
                 dedupe_key=f"{command}:{bot.config.chat_id}"
             )
 
-            cmd, dedupe_key = await bot.command_queue.dequeue()
+            cmd, dedupe_key, _ = await bot.command_queue.dequeue()
             assert dedupe_key == expected_key

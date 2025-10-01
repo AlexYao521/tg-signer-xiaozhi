@@ -45,7 +45,7 @@ def test_command_queue_basic():
         # Dequeue commands
         results = []
         for _ in range(3):
-            cmd, _ = await queue.dequeue()
+            cmd, _, _ = await queue.dequeue()
             results.append(cmd)
         
         # Both priority 1 commands should come before priority 2
@@ -78,8 +78,8 @@ def test_command_queue_deduplication():
         await queue.enqueue("command2", dedupe_key="key2")
         
         # Should only have 2 commands
-        cmd1, _ = await queue.dequeue()
-        cmd2, _ = await queue.dequeue()
+        cmd1, _, _ = await queue.dequeue()
+        cmd2, _, _ = await queue.dequeue()
         
         assert queue.empty()
     
