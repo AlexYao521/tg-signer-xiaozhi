@@ -19,6 +19,12 @@ from pyrogram.types import Message
 from .bot_config import BotConfig
 from .xiaozhi_client import XiaozhiClient, create_xiaozhi_client
 from .core import Client, get_proxy
+from .modules import (
+    HerbGardenModule,
+    StarObservatoryModule,
+    DailyRoutineModule,
+    PeriodicTasksModule
+)
 
 logger = logging.getLogger("tg-signer.bot")
 
@@ -123,12 +129,16 @@ class ChannelBot:
         workdir: str = ".bot",
         session_string: str = None,
         in_memory: bool = False,
-        xiaozhi_config_path: str = "config.json"
+        config_manager = None
     ):
         self.config = config
         self.account = account
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
+        
+        # Store config manager
+        from tg_signer.config_manager import get_config_manager
+        self.config_manager = config_manager or get_config_manager()
         
         # Initialize state store
         self.state_store = StateStore(str(self.workdir / "states"))
@@ -144,7 +154,21 @@ class ChannelBot:
         # Initialize Xiaozhi AI client
         self.xiaozhi_client = None
         if config.xiaozhi_ai.authorized_users:
-            self.xiaozhi_client = self._load_xiaozhi_client(xiaozhi_config_path)
+            self.xiaozhi_client = self._load_xiaozhi_client()
+        
+        # Initialize automation modules
+        self.herb_garden = HerbGardenModule(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        self.star_observatory = StarObservatoryModule(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        self.daily_routine = DailyRoutineModule(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        self.periodic_tasks = PeriodicTasksModule(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
         
         # Runtime state
         self._running = False
@@ -156,11 +180,13 @@ class ChannelBot:
         session_string: str, in_memory: bool
     ) -> Client:
         """Create Telegram client (reusing tg-signer infrastructure)"""
-        api_id = os.getenv("TG_API_ID")
-        api_hash = os.getenv("TG_API_HASH")
+        # Get credentials from config manager
+        api_id, api_hash = self.config_manager.get_telegram_credentials()
         
         if not api_id or not api_hash:
-            raise ValueError("TG_API_ID and TG_API_HASH must be set")
+            raise ValueError(
+                "TG_API_ID and TG_API_HASH must be set in environment or config/app_config.json"
+            )
         
         return Client(
             name=account,
@@ -172,15 +198,14 @@ class ChannelBot:
             in_memory=in_memory
         )
     
-    def _load_xiaozhi_client(self, config_path: str) -> Optional[XiaozhiClient]:
-        """Load Xiaozhi AI client from config"""
-        if not Path(config_path).exists():
-            logger.warning(f"Xiaozhi config not found: {config_path}")
-            return None
-        
+    def _load_xiaozhi_client(self) -> Optional[XiaozhiClient]:
+        """Load Xiaozhi AI client from config manager"""
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                xiaozhi_config = json.load(f)
+            xiaozhi_config = self.config_manager.get_xiaozhi_config()
+            if not xiaozhi_config:
+                logger.warning("Xiaozhi config not found")
+                return None
+            
             return create_xiaozhi_client(xiaozhi_config)
         except Exception as e:
             logger.error(f"Failed to load Xiaozhi client: {e}")
@@ -209,9 +234,13 @@ class ChannelBot:
         asyncio.create_task(self._command_processor())
         asyncio.create_task(self._daily_reset_task())
         
-        # Initialize daily tasks if enabled
-        if self.config.daily.enable_sign_in:
-            await self._schedule_daily_signin()
+        # Start automation modules
+        await self.daily_routine.start()
+        await self.periodic_tasks.start()
+        await self.star_observatory.start()
+        await self.herb_garden.start()
+        
+        logger.info("All modules started successfully")
     
     async def stop(self):
         """Stop the bot"""
@@ -236,15 +265,32 @@ class ChannelBot:
     async def _on_message(self, client: Client, message: Message):
         """Handle incoming messages"""
         try:
+            # Delegate to modules for parsing and state updates
+            handled = False
+            
+            # Check herb garden module
+            if await self.herb_garden.handle_message(message):
+                handled = True
+            
+            # Check star observatory module
+            if await self.star_observatory.handle_message(message):
+                handled = True
+            
+            # Check daily routine module
+            if await self.daily_routine.handle_message(message):
+                handled = True
+            
+            # Check periodic tasks module
+            if await self.periodic_tasks.handle_message(message):
+                handled = True
+            
             # Check for Xiaozhi AI triggers
-            if self.xiaozhi_client and message.text:
+            if self.xiaozhi_client and message.text and not handled:
                 await self._handle_xiaozhi_message(message)
             
             # Check for custom rules
-            await self._handle_custom_rules(message)
-            
-            # Parse response for state updates
-            await self._parse_response(message)
+            if not handled:
+                await self._handle_custom_rules(message)
             
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
@@ -323,12 +369,6 @@ class ChannelBot:
                 state[state_key] = time.time()
                 self.state_store.save("custom_rules.json", state)
     
-    async def _parse_response(self, message: Message):
-        """Parse bot responses for state updates"""
-        # This would parse messages for completion of tasks
-        # e.g., "点卯成功", "传功完成", etc.
-        pass
-    
     async def _command_processor(self):
         """Background task to process command queue"""
         while self._running:
@@ -356,26 +396,6 @@ class ChannelBot:
         except Exception as e:
             logger.error(f"Failed to send command '{command}': {e}")
     
-    async def _schedule_daily_signin(self):
-        """Schedule daily sign-in task"""
-        # Check state
-        state = self.state_store.load("daily_state.json")
-        key = f"acct_{self.account}_chat_{self.config.chat_id}"
-        
-        today = datetime.now().date().isoformat()
-        daily_state = state.get(key, {})
-        
-        if daily_state.get("last_signin_date") == today:
-            logger.info("Daily sign-in already completed today")
-            return
-        
-        # Schedule sign-in command
-        await self.command_queue.enqueue(
-            ".点卯",
-            priority=1,
-            dedupe_key=f"daily:signin:{self.config.chat_id}"
-        )
-    
     async def _daily_reset_task(self):
         """Reset daily state at midnight"""
         while self._running:
@@ -385,20 +405,14 @@ class ChannelBot:
             midnight = datetime.combine(tomorrow, datetime.min.time())
             seconds_until_midnight = (midnight - now).total_seconds()
             
+            logger.info(f"Next daily reset in {seconds_until_midnight:.0f} seconds")
             await asyncio.sleep(seconds_until_midnight)
             
-            # Reset daily state
-            state = self.state_store.load("daily_state.json")
-            key = f"acct_{self.account}_chat_{self.config.chat_id}"
-            if key in state:
-                state[key] = {}
-                self.state_store.save("daily_state.json", state)
+            # Reset daily state for all modules
+            logger.info("Performing daily reset at midnight")
+            await self.daily_routine.reset_daily_state()
             
-            logger.info("Daily state reset at midnight")
-            
-            # Re-schedule daily tasks
-            if self.config.daily.enable_sign_in:
-                await self._schedule_daily_signin()
+            logger.info("Daily state reset complete")
     
     async def run(self):
         """Run the bot (blocking)"""

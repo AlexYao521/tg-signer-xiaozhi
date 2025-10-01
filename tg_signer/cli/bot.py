@@ -21,24 +21,29 @@ def bot_cli():
     pass
 
 
-@bot_cli.command(name="run", help="运行频道自动化机器人")
-@click.argument("config_name")
+@bot_cli.command(name="run", help="运行频道自动化机器人脚本")
+@click.argument("script_name")
 @click.option(
-    "--xiaozhi-config",
-    "-x",
-    default="config.json",
-    help="小智AI配置文件路径",
-    type=click.Path(exists=True)
+    "--ai",
+    is_flag=True,
+    default=False,
+    help="启用小智AI互动"
 )
 @click.pass_obj
-def run_bot(obj, config_name: str, xiaozhi_config: str):
-    """Run channel automation bot"""
+def run_bot(obj, script_name: str, ai: bool):
+    """
+    Run channel automation bot script.
+    
+    Usage: tg-signer bot -a <account> run <script> --ai
+    """
+    from tg_signer.config_manager import get_config_manager
+    
     workdir = Path(obj["workdir"])
-    config_file = workdir / "bot_configs" / f"{config_name}.json"
+    config_file = workdir / "bot_configs" / f"{script_name}.json"
     
     if not config_file.exists():
         click.echo(f"配置文件不存在: {config_file}")
-        click.echo(f"请先使用 'tg-signer bot config {config_name}' 创建配置")
+        click.echo(f"请先使用 'tg-signer bot config {script_name}' 创建配置")
         return
     
     try:
@@ -47,19 +52,35 @@ def run_bot(obj, config_name: str, xiaozhi_config: str):
             config_data = json.load(f)
         bot_config = BotConfig(**config_data)
         
+        # Override AI setting if flag is provided
+        if ai:
+            bot_config.xiaozhi_ai.authorized_users = bot_config.xiaozhi_ai.authorized_users or []
+            if not bot_config.xiaozhi_ai.authorized_users:
+                click.echo("警告: 启用了AI但未配置授权用户，AI功能将不会生效")
+        else:
+            # Disable AI if flag is not set
+            bot_config.xiaozhi_ai.authorized_users = []
+        
+        # Get configuration manager
+        config_mgr = get_config_manager()
+        
+        # Get proxy from configuration manager
+        proxy = config_mgr.get_proxy() or obj["proxy"]
+        
         # Create and run bot
         bot = ChannelBot(
             config=bot_config,
             account=obj["account"],
-            proxy=obj["proxy"],
+            proxy=proxy,
             session_dir=obj["session_dir"],
             workdir=str(workdir / "bot_workdir"),
             session_string=obj["session_string"],
             in_memory=obj["in_memory"],
-            xiaozhi_config_path=xiaozhi_config
+            config_manager=config_mgr
         )
         
-        click.echo(f"启动机器人: {config_name} (频道: {bot_config.chat_id})")
+        ai_status = "启用" if ai else "禁用"
+        click.echo(f"启动机器人脚本: {script_name} (账号: {obj['account']}, 频道: {bot_config.chat_id}, AI: {ai_status})")
         
         # Run bot
         loop = asyncio.get_event_loop()
@@ -71,7 +92,85 @@ def run_bot(obj, config_name: str, xiaozhi_config: str):
         raise click.Abort()
 
 
-@bot_cli.command(name="config", help="配置频道自动化机器人（交互式）")
+@bot_cli.command(name="init", help="智能配置初始化（创建默认配置和目录结构）")
+@click.pass_obj
+def init_bot(obj):
+    """
+    Initialize bot configuration intelligently.
+    Creates default configuration files and directory structure.
+    """
+    from tg_signer.config_manager import get_config_manager
+    
+    click.echo("\n=== 小智机器人初始化配置 ===\n")
+    
+    # Get configuration manager
+    config_mgr = get_config_manager()
+    
+    # Create config directory if it doesn't exist
+    config_dir = Path("config")
+    config_dir.mkdir(exist_ok=True)
+    click.echo(f"✓ 配置目录: {config_dir.absolute()}")
+    
+    # Create scripts directory
+    scripts_dir = config_dir / "scripts"
+    scripts_dir.mkdir(exist_ok=True)
+    click.echo(f"✓ 脚本目录: {scripts_dir.absolute()}")
+    
+    # Create bot configs directory
+    workdir = Path(obj["workdir"])
+    bot_configs_dir = workdir / "bot_configs"
+    bot_configs_dir.mkdir(parents=True, exist_ok=True)
+    click.echo(f"✓ 机器人配置目录: {bot_configs_dir.absolute()}")
+    
+    # Create app_config.json if it doesn't exist
+    app_config_path = config_dir / "app_config.json"
+    if not app_config_path.exists():
+        config_mgr.create_default_app_config()
+        click.echo(f"✓ 创建应用配置: {app_config_path}")
+    else:
+        click.echo(f"- 应用配置已存在: {app_config_path}")
+    
+    # Create config.json for Xiaozhi if it doesn't exist
+    xiaozhi_config_path = config_dir / "config.json"
+    if not xiaozhi_config_path.exists():
+        if click.confirm("是否创建小智AI默认配置？"):
+            config_mgr.create_default_xiaozhi_config()
+            click.echo(f"✓ 创建小智配置: {xiaozhi_config_path}")
+    else:
+        click.echo(f"- 小智配置已存在: {xiaozhi_config_path}")
+    
+    # Check for Telegram credentials
+    api_id, api_hash = config_mgr.get_telegram_credentials()
+    if not api_id or not api_hash:
+        click.echo("\n⚠ Telegram API 凭证未配置")
+        click.echo("请设置以下环境变量或在 config/app_config.json 中配置:")
+        click.echo("  - TG_API_ID")
+        click.echo("  - TG_API_HASH")
+        click.echo("\n或手动编辑 config/app_config.json 文件")
+    else:
+        click.echo(f"\n✓ Telegram API 凭证已配置")
+    
+    # Check proxy configuration
+    proxy = config_mgr.get_proxy()
+    if proxy:
+        click.echo(f"✓ 代理已配置: {proxy}")
+    else:
+        click.echo("- 未配置代理（可选）")
+    
+    # Provide next steps
+    click.echo("\n=== 初始化完成 ===\n")
+    click.echo("下一步操作:")
+    click.echo("1. 登录账号: tg-signer -a <account> login")
+    click.echo("2. 创建脚本配置: tg-signer bot config <script_name>")
+    click.echo("3. 运行脚本: tg-signer bot -a <account> run <script_name> [--ai]")
+    click.echo("\n其他命令:")
+    click.echo("  tg-signer bot list                   # 列出所有脚本")
+    click.echo("  tg-signer bot doctor [script_name]   # 检查配置")
+    click.echo("  tg-signer bot --help                 # 查看所有命令")
+    click.echo()
+
+
+@bot_cli.command(name="config", help="配置频道自动化机器人脚本（交互式）")
 @click.argument("config_name")
 @click.pass_obj
 def config_bot(obj, config_name: str):
