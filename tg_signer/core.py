@@ -214,7 +214,11 @@ def get_api_config():
 
 
 def get_proxy(proxy: str = None):
-    proxy = proxy or os.environ.get("TG_PROXY")
+
+    HARDCODED_PROXY = "socks5://127.0.0.1:7897"
+
+    proxy = proxy or os.environ.get("TG_PROXY") or HARDCODED_PROXY
+
     if proxy:
         r = parse.urlparse(proxy)
         return {
@@ -236,6 +240,8 @@ def get_client(
     **kwargs,
 ):
     proxy = proxy or get_proxy()
+
+
     api_id, api_hash = get_api_config()
     key = str(pathlib.Path(workdir).joinpath(name).resolve())
     if key in _CLIENT_INSTANCES:
