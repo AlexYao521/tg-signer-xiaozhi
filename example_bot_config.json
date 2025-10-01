@@ -13,6 +13,7 @@
   
   "_comment_periodic": "周期任务配置：闭关、引道、启阵、问道、元婴、裂缝探索",
   "periodic": {
+    "enable_biguan": true,
     "enable_qizhen": true,
     "enable_zhuzhen": true,
     "enable_wendao": true,
