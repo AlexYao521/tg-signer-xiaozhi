@@ -45,7 +45,8 @@ def _extract_cooldown_seconds(text: str, command: str = None) -> Optional[int]:
     
     # 冷却时间提取正则表达式
     # 支持 "X小时Y分钟Z秒" / "Y分钟Z秒" / "Z秒" / "X小时" 等组合
-    pattern = r'(?:(\d+)\s*[小时时])?(?:\s*(\d+)\s*分钟?)?(?:\s*(\d+)\s*秒)?'
+    # 使用单个正则表达式匹配整个时间段
+    pattern = r'(\d+)\s*(?:小时|时)|(\d+)\s*(?:分钟|分)|(\d+)\s*秒'
     
     matches = re.findall(pattern, text)
     
@@ -56,6 +57,7 @@ def _extract_cooldown_seconds(text: str, command: str = None) -> Optional[int]:
     total_seconds = 0
     parsed_any = False
     
+    # 遍历所有匹配项
     for match in matches:
         hours, minutes, seconds = match
         
@@ -68,10 +70,6 @@ def _extract_cooldown_seconds(text: str, command: str = None) -> Optional[int]:
         if seconds:
             total_seconds += int(seconds)
             parsed_any = True
-        
-        # 如果解析到任何值，停止继续匹配
-        if parsed_any:
-            break
     
     if not parsed_any:
         logger.debug(f"[冷却解析] 未能解析出有效数值: {text}")
