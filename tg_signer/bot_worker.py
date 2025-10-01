@@ -292,8 +292,8 @@ class ChannelBot:
         self._register_handlers()
 
         # Start background tasks - store references to track them
-        self._command_processor_task = asyncio.create_task(self._command_processor())
-        self._daily_reset_task = asyncio.create_task(self._daily_reset_task())
+        self._command_processor_task = asyncio.create_task(self._command_processor_loop())
+        self._daily_reset_task = asyncio.create_task(self._daily_reset_loop())
         logger.info("[核心] 后台任务已启动: 指令处理器、每日重置")
 
         # Start all modules with staggered delays to avoid slowmode
@@ -546,7 +546,7 @@ class ChannelBot:
                 self.state_store.save("custom_rules.json", state)
 
 
-    async def _command_processor(self):
+    async def _command_processor_loop(self):
         """
         Background task to process command queue serially.
         
@@ -655,8 +655,9 @@ class ChannelBot:
             
             return False
 
-    async def _daily_reset_task(self):
+    async def _daily_reset_loop(self):
         """Reset daily state at midnight"""
+        logger.info("[核心] 每日重置任务已启动")
         while self._running:
             now = datetime.now()
             # Calculate time until next midnight
@@ -664,16 +665,19 @@ class ChannelBot:
             midnight = datetime.combine(tomorrow, datetime.min.time())
             seconds_until_midnight = (midnight - now).total_seconds()
 
+            logger.debug(f"[核心] 下次重置时间: {midnight} (距离 {seconds_until_midnight:.0f}秒)")
             await asyncio.sleep(seconds_until_midnight)
 
             # Reset daily state for all modules
-            logger.info("Daily state reset at midnight")
+            logger.info("[核心] 午夜重置每日任务状态")
 
             # Reset daily routine
             self.daily_routine.reset_daily()
 
             # Re-schedule daily tasks
             await self.daily_routine.start()
+        
+        logger.info("[核心] 每日重置任务已停止")
 
     async def run(self):
         """Run the bot (blocking)"""
