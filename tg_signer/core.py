@@ -215,9 +215,7 @@ def get_api_config():
 
 def get_proxy(proxy: str = None):
 
-    HARDCODED_PROXY = "socks5://127.0.0.1:7897"
-
-    proxy = proxy or os.environ.get("TG_PROXY") or HARDCODED_PROXY
+    proxy = "socks5://127.0.0.1:7897"
 
     if proxy:
         r = parse.urlparse(proxy)

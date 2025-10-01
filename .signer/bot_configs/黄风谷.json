@@ -25,16 +25,42 @@
     ]
   },
   "herb_garden": {
-    "enabled": true
+    "enabled": true,
+    "default_seed": "凝血草种子",
+    "seeds": {
+      "凝血草种子": {
+        "maturity_hours": 6,
+        "exchange_batch": 5,
+        "exchange_command": ".兑换 凝血草种子 {count}"
+      },
+      "清灵草种子": {
+        "maturity_hours": 8,
+        "exchange_batch": 5,
+        "exchange_command": ".兑换 清灵草种子 {count}"
+      }
+    },
+    "scan_interval_min": 900,
+    "post_maintenance_rescan": 30,
+    "post_harvest_rescan": 20,
+    "seed_shortage_retry": 600
   },
   "xiaozhi_ai": {
     "authorized_users": [],
     "filter_keywords": [],
     "blacklist_users": [],
+    "trigger_keywords": [
+      "@小智",
+      "小智AI",
+      "xiaozhi"
+    ],
+    "response_prefix": "小智AI回复: ",
     "debug": false
   },
   "activity": {
     "enabled": true,
     "rules_extra": []
-  }
+  },
+  "custom_rules": [],
+  "sign_interval": 10.0,
+  "min_send_interval": 1.0
 }

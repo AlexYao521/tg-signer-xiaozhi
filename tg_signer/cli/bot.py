@@ -286,8 +286,8 @@ def init_bot(obj):
     click.echo("\n3. 配置 Telegram API 凭据...")
     env_file = workdir / ".env"
     
-    api_id = os.getenv("TG_API_ID")
-    api_hash = os.getenv("TG_API_HASH")
+    api_id = int(os.environ.get("TG_API_ID", 611335))
+    api_hash = os.environ.get("TG_API_HASH", "d524b414d21f4d37f08684c1df41ac9c")
     
     if not api_id or not api_hash:
         click.echo("   未检测到 TG_API_ID 和 TG_API_HASH 环境变量")
@@ -515,8 +515,8 @@ def doctor(obj, config_name: Optional[str]):
     
     # Check environment variables
     import os
-    api_id = os.getenv("TG_API_ID")
-    api_hash = os.getenv("TG_API_HASH")
+    api_id = int(os.environ.get("TG_API_ID", 611335))
+    api_hash = os.environ.get("TG_API_HASH", "d524b414d21f4d37f08684c1df41ac9c")
     
     if api_id and api_hash:
         click.echo("✓ Telegram API credentials found")

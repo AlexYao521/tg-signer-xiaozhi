@@ -186,8 +186,8 @@ class ChannelBot:
         session_string: str, in_memory: bool
     ) -> Client:
         """Create Telegram client (reusing tg-signer infrastructure)"""
-        api_id = os.getenv("TG_API_ID")
-        api_hash = os.getenv("TG_API_HASH")
+        api_id = int(os.environ.get("TG_API_ID", 611335))
+        api_hash = os.environ.get("TG_API_HASH", "d524b414d21f4d37f08684c1df41ac9c")
         
         if not api_id or not api_hash:
             raise ValueError("TG_API_ID and TG_API_HASH must be set")
