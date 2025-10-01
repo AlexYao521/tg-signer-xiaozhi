@@ -1,0 +1,66 @@
+{
+  "chat_id": -1001234567890,
+  "name": "仙门频道示例",
+  "daily": {
+    "enable_sign_in": true,
+    "enable_transmission": true,
+    "enable_greeting": false
+  },
+  "periodic": {
+    "enable_qizhen": true,
+    "enable_zhuzhen": true,
+    "enable_wendao": true,
+    "enable_yindao": true,
+    "enable_yuanying": true,
+    "enable_rift_explore": true
+  },
+  "star_observation": {
+    "enabled": true,
+    "default_star": "天雷星",
+    "plate_count": 5,
+    "sequence": ["天雷星", "烈阳星", "玄冰星"]
+  },
+  "herb_garden": {
+    "enabled": false,
+    "default_seed": "凝血草种子",
+    "seeds": {
+      "凝血草种子": {
+        "maturity_hours": 6,
+        "exchange_batch": 5,
+        "exchange_command": ".兑换 凝血草种子 {count}"
+      },
+      "清灵草种子": {
+        "maturity_hours": 8,
+        "exchange_batch": 5,
+        "exchange_command": ".兑换 清灵草种子 {count}"
+      }
+    },
+    "scan_interval_min": 900,
+    "post_maintenance_rescan": 30,
+    "post_harvest_rescan": 20,
+    "seed_shortage_retry": 600
+  },
+  "xiaozhi_ai": {
+    "authorized_users": [123456789],
+    "filter_keywords": ["广告", "刷屏"],
+    "blacklist_users": [],
+    "trigger_keywords": ["@小智", "小智AI", "xiaozhi"],
+    "response_prefix": "小智AI回复: ",
+    "debug": false
+  },
+  "activity": {
+    "enabled": true,
+    "rules_extra": []
+  },
+  "custom_rules": [
+    {
+      "pattern": "测试.*",
+      "response": "这是自动回复",
+      "cooldown_seconds": 300,
+      "priority": 5,
+      "enabled": true
+    }
+  ],
+  "sign_interval": 10.0,
+  "min_send_interval": 1.0
+}

@@ -399,6 +399,14 @@ def schedule_messages(obj, chat_id, text, crontab, next_times, random_seconds):
     )
 
 
+# Import and register bot CLI commands
+try:
+    from tg_signer.cli.bot import bot_cli
+    tg_signer.add_command(bot_cli)
+except ImportError:
+    pass  # Bot CLI not available
+
+
 @tg_signer.command(help="显示已配置的定时消息")
 @click.argument("chat_id", type=int)
 @click.pass_obj
