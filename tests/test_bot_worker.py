@@ -111,7 +111,7 @@ async def test_command_enqueue_with_correct_chat_id(mock_config):
         )
 
         # Dequeue and verify
-        command, dedupe_key = await bot.command_queue.dequeue()
+        command, dedupe_key, _ = await bot.command_queue.dequeue()
         assert command == ".查看访客"
         assert dedupe_key == f"activity:.查看访客:{bot.config.chat_id}"
 

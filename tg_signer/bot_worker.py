@@ -62,41 +62,68 @@ class StateStore:
 
 
 class CommandQueue:
-    """Priority queue for command scheduling with deduplication"""
+    """
+    Priority queue for command scheduling with deduplication and state tracking.
+    
+    Features:
+    - Priority-based scheduling (P0=immediate, P1=high, P2=normal, P3=low)
+    - Deduplication by key
+    - Command state tracking (pending/executing/completed/failed)
+    - Callback support for command completion
+    """
 
     def __init__(self):
         self._queue = asyncio.PriorityQueue()
         self._pending = set()  # Deduplication keys
         self._order = 0
+        self._command_states = {}  # Track command execution state
+        self._callbacks = {}  # Command callbacks: dedupe_key -> callback_fn
 
-    async def enqueue(self, command: str, when: float = None, priority: int = 5, dedupe_key: str = None):
+    async def enqueue(
+        self, 
+        command: str, 
+        when: float = None, 
+        priority: int = 2, 
+        dedupe_key: str = None,
+        callback=None
+    ):
         """
         Enqueue a command.
 
         Args:
             command: Command string to send
             when: Unix timestamp when to execute (None = now)
-            priority: Priority level (lower = higher priority)
+            priority: Priority level (0=immediate, 1=high, 2=normal, 3=low)
             dedupe_key: Key for deduplication (None = no dedup)
+            callback: Optional async callback function to call after execution
         """
         when = when or time.time()
 
         if dedupe_key and dedupe_key in self._pending:
             logger.debug(f"Command deduplicated: {dedupe_key}")
-            return
+            return False
 
         self._order += 1
-        item = (when, priority, self._order, command, dedupe_key)
+        item = (when, priority, self._order, command, dedupe_key, callback)
         await self._queue.put(item)
 
         if dedupe_key:
             self._pending.add(dedupe_key)
+            self._command_states[dedupe_key] = "pending"
+            if callback:
+                self._callbacks[dedupe_key] = callback
 
-        logger.debug(f"Enqueued command: {command} (when={when}, priority={priority})")
+        logger.debug(f"Enqueued command: {command} (when={when}, priority={priority}, key={dedupe_key})")
+        return True
 
-    async def dequeue(self) -> tuple[str, Optional[str]]:
-        """Dequeue next command (blocks until available)"""
-        when, priority, order, command, dedupe_key = await self._queue.get()
+    async def dequeue(self) -> tuple[str, Optional[str], Optional[callable]]:
+        """
+        Dequeue next command (blocks until available).
+        
+        Returns:
+            (command, dedupe_key, callback)
+        """
+        when, priority, order, command, dedupe_key, callback = await self._queue.get()
 
         # Wait until scheduled time
         now = time.time()
@@ -104,13 +131,30 @@ class CommandQueue:
             await asyncio.sleep(when - now)
 
         if dedupe_key:
-            self._pending.discard(dedupe_key)
+            self._command_states[dedupe_key] = "executing"
 
-        return command, dedupe_key
+        return command, dedupe_key, callback
+
+    def mark_completed(self, dedupe_key: str, success: bool = True):
+        """Mark a command as completed or failed"""
+        if dedupe_key:
+            self._pending.discard(dedupe_key)
+            self._command_states[dedupe_key] = "completed" if success else "failed"
+            # Clean up callback after execution
+            if dedupe_key in self._callbacks:
+                del self._callbacks[dedupe_key]
+
+    def get_state(self, dedupe_key: str) -> Optional[str]:
+        """Get the state of a command by its dedupe key"""
+        return self._command_states.get(dedupe_key)
 
     def empty(self) -> bool:
         """Check if queue is empty"""
         return self._queue.empty()
+    
+    def pending_count(self) -> int:
+        """Get count of pending commands"""
+        return len(self._pending)
 
 
 class ChannelBot:
@@ -302,12 +346,13 @@ class ChannelBot:
                 )
                 if activity_match:
                     response_command, response_type, priority = activity_match
-                    logger.info(f"Activity matched: {response_command}")
+                    logger.info(f"[活动] 匹配成功，响应: {response_command} (优先级={priority})")
 
-                    # Enqueue the response command/text
+                    # Time-sensitive activities use priority=0 for immediate/high-priority execution
+                    # This ensures they are processed before other queued commands
                     await self.command_queue.enqueue(
                         response_command,
-                        priority=priority,
+                        priority=priority,  # 0=immediate, 1=high, 2=normal, 3=low
                         dedupe_key=f"activity:{response_command}:{self.config.chat_id}"
                     )
                     handled = True
@@ -355,12 +400,19 @@ class ChannelBot:
                 logger.info(f"Message filtered due to keyword: {keyword}")
                 return
 
-        # Send to Xiaozhi AI
+        # Send to Xiaozhi AI and enqueue response
         try:
             response = await self.xiaozhi_client.send_message(text)
             reply_text = f"{self.config.xiaozhi_ai.response_prefix}{response}"
-            await message.reply(reply_text)
-            logger.info(f"Xiaozhi AI replied to message from {message.from_user.id}")
+            
+            # Enqueue the AI response instead of directly replying
+            # This ensures rate limiting and proper sequencing
+            await self.command_queue.enqueue(
+                reply_text,
+                priority=2,  # Normal priority for AI responses
+                dedupe_key=f"ai_reply:{message.from_user.id}:{time.time()}"
+            )
+            logger.info(f"Xiaozhi AI response queued for user {message.from_user.id}")
         except Exception as e:
             logger.error(f"Failed to get Xiaozhi AI response: {e}")
 
@@ -385,9 +437,13 @@ class ChannelBot:
                     logger.debug(f"Rule in cooldown: {rule.pattern}")
                     continue
 
-                # Execute response
+                # Enqueue response instead of directly replying
                 if rule.response:
-                    await message.reply(rule.response)
+                    await self.command_queue.enqueue(
+                        rule.response,
+                        priority=2,  # Normal priority for custom rules
+                        dedupe_key=f"custom_rule:{rule.pattern}:{time.time()}"
+                    )
 
                 if rule.action:
                     # Execute action (would need to be implemented)
@@ -399,20 +455,50 @@ class ChannelBot:
 
 
     async def _command_processor(self):
-        """Background task to process command queue"""
+        """
+        Background task to process command queue serially.
+        
+        This ensures all commands are executed in order with proper:
+        - Rate limiting between commands
+        - State tracking (pending -> executing -> completed/failed)
+        - Callback execution after command completion
+        """
         while self._running:
             try:
                 if not self.command_queue.empty():
-                    command, dedupe_key = await self.command_queue.dequeue()
-                    await self._send_command(command)
+                    command, dedupe_key, callback = await self.command_queue.dequeue()
+                    success = await self._send_command(command, dedupe_key)
+                    
+                    # Mark command as completed/failed
+                    if dedupe_key:
+                        self.command_queue.mark_completed(dedupe_key, success)
+                    
+                    # Execute callback if provided
+                    if callback and success:
+                        try:
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback()
+                            else:
+                                callback()
+                        except Exception as e:
+                            logger.error(f"Error executing callback for '{command}': {e}", exc_info=True)
                 else:
                     await asyncio.sleep(1)
             except Exception as e:
                 logger.error(f"Error in command processor: {e}", exc_info=True)
 
-    async def _send_command(self, command: str):
-        """Send a command with rate limiting"""
-        # Rate limiting
+    async def _send_command(self, command: str, dedupe_key: str = None) -> bool:
+        """
+        Send a command with rate limiting and error handling.
+        
+        Args:
+            command: Command string to send
+            dedupe_key: Deduplication key for state tracking
+            
+        Returns:
+            True if command sent successfully, False otherwise
+        """
+        # Rate limiting - ensure minimum interval between sends
         now = time.time()
         elapsed = now - self._last_send_time
         if elapsed < self.config.min_send_interval:
@@ -436,9 +522,12 @@ class ChannelBot:
             if message and message.id:
                 self.daily_routine.update_last_message_id(message.id)
 
-            logger.info(f"Sent command: {command}")
+            logger.info(f"✓ Sent command: {command}")
+            return True
+            
         except Exception as e:
-            logger.error(f"Failed to send command '{command}': {e}")
+            logger.error(f"✗ Failed to send command '{command}': {e}")
+            return False
 
     async def _daily_reset_task(self):
         """Reset daily state at midnight"""
