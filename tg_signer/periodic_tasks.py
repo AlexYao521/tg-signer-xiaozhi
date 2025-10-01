@@ -46,6 +46,8 @@ class PeriodicTasks:
         "启阵": ".启阵",
         "问道": ".问道",
         "探寻裂缝": ".探寻裂缝",
+        "元婴出窍": ".元婴出窍",
+        "元婴状态": ".元婴状态",
     }
     
     def __init__(self, config, state_store, command_queue, chat_id: int, account: str):
@@ -63,6 +65,7 @@ class PeriodicTasks:
             "qizhen": getattr(self.config, "enable_qizhen", True),
             "wendao": getattr(self.config, "enable_wendao", True),
             "rift_explore": getattr(self.config, "enable_rift_explore", True),
+            "yuanying": getattr(self.config, "enable_yuanying", True),
         }
         
         self.state = PeriodicState()
@@ -115,6 +118,8 @@ class PeriodicTasks:
             "启阵": "qizhen",
             "问道": "wendao",
             "探寻裂缝": "rift_explore",
+            "元婴出窍": "yuanying",
+            "元婴状态": "yuanying",
         }
         
         config_key = config_key_map.get(task_name)
@@ -179,6 +184,8 @@ class PeriodicTasks:
             "启阵": ["启阵成功", "阵法运转"],
             "问道": ["问道", "天机"],
             "探寻裂缝": ["探寻成功", "遭遇风暴", "发现", "受创"],
+            "元婴出窍": ["云游", "出窍成功", "元婴离体"],
+            "元婴状态": ["元婴状态", "元神", "归窍", "出窍", "温养"],
         }
         
         keywords = success_keywords.get(task_name, [])

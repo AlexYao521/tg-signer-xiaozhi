@@ -13,6 +13,7 @@
   
   "_comment_periodic": "周期任务配置：闭关、引道、启阵、问道、元婴、裂缝探索",
   "periodic": {
+    "enable_biguan": true,
     "enable_qizhen": true,
     "enable_zhuzhen": true,
     "enable_wendao": true,
@@ -70,7 +71,7 @@
   "_comment_custom": "自定义规则：支持正则匹配和自定义回复",
   "custom_rules": [],
   
-  "_comment_intervals": "时间间隔配置：sign_interval控制任务执行间隔，min_send_interval控制最小发送间隔",
+  "_comment_intervals": "时间间隔配置：sign_interval控制任务执行间隔，min_send_interval控制最小发送间隔（至少10秒，遵循频道消息最小间隔规则）",
   "sign_interval": 10.0,
-  "min_send_interval": 1.0
+  "min_send_interval": 10.0
 }

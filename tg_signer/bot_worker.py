@@ -20,7 +20,6 @@ from .bot_config import BotConfig
 from .xiaozhi_client import XiaozhiClient, create_xiaozhi_client
 from .core import Client, get_proxy
 from .activity_manager import ActivityManager
-from .yuanying_tasks import YuanYingTasks
 from .daily_routine import DailyRoutine
 from .periodic_tasks import PeriodicTasks
 from .herb_garden import HerbGarden
@@ -172,11 +171,6 @@ class ChannelBot:
             config, self.state_store, self.command_queue, config.chat_id, account
         )
         
-        # Initialize YuanYing Tasks (元婴任务)
-        self.yuanying_tasks = YuanYingTasks(
-            config, self.state_store, self.command_queue, config.chat_id, account
-        )
-        
         # Initialize Activity Manager (活动管理器)
         self.activity_manager = ActivityManager(
             config.chat_id, account, self.xiaozhi_client
@@ -250,7 +244,6 @@ class ChannelBot:
         await self.periodic_tasks.start()
         await self.herb_garden.start()
         await self.star_observation.start()
-        await self.yuanying_tasks.start()
     
     async def stop(self):
         """Stop the bot"""
@@ -300,12 +293,7 @@ class ChannelBot:
                 handled = True
                 logger.debug("Message handled by Herb Garden")
             
-            # 5. YuanYing tasks (元婴)
-            if not handled and await self.yuanying_tasks.handle_message(message):
-                handled = True
-                logger.debug("Message handled by YuanYing tasks")
-            
-            # 6. Check Activity Manager for activity matching
+            # 5. Check Activity Manager for activity matching
             if not handled and message.text and self.config.activity.enabled:
                 activity_match = self.activity_manager.match_activity(
                     message.text, 
@@ -324,11 +312,11 @@ class ChannelBot:
                     )
                     handled = True
             
-            # 7. Check for Xiaozhi AI triggers (if not handled by activity)
+            # 6. Check for Xiaozhi AI triggers (if not handled by activity)
             if not handled and self.xiaozhi_client and message.text:
                 await self._handle_xiaozhi_message(message)
             
-            # 8. Check for custom rules (if not handled)
+            # 7. Check for custom rules (if not handled)
             if not handled:
                 await self._handle_custom_rules(message)
             
@@ -431,8 +419,23 @@ class ChannelBot:
             await asyncio.sleep(self.config.min_send_interval - elapsed)
         
         try:
-            await self.client.send_message(self.config.chat_id, command)
+            # Check if transmission needs reply_to
+            reply_to_message_id = None
+            if "宗门传功" in command and self.daily_routine.state.last_message_id:
+                reply_to_message_id = self.daily_routine.state.last_message_id
+                logger.debug(f"Sending transmission with reply_to: {reply_to_message_id}")
+            
+            message = await self.client.send_message(
+                self.config.chat_id, 
+                command,
+                reply_to_message_id=reply_to_message_id
+            )
             self._last_send_time = time.time()
+            
+            # Track message ID for future replies (especially for transmission)
+            if message and message.id:
+                self.daily_routine.update_last_message_id(message.id)
+            
             logger.info(f"Sent command: {command}")
         except Exception as e:
             logger.error(f"Failed to send command '{command}': {e}")
