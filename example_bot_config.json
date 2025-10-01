@@ -15,6 +15,7 @@
     "enable_rift_explore": true
   },
   "comment_periodic": "周期任务配置 - enable_yuanying控制元婴任务是否启用，无需手动继承或集成",
+  "comment_xiaozhi": "小智AI配置说明：authorized_users控制谁可以使用AI，运行时使用 --ai 标志启用聊天互动，不使用 --ai 时仅用于活动问答",
   "star_observation": {
     "enabled": true,
     "default_star": "天雷星",

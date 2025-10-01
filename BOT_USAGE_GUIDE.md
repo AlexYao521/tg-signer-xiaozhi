@@ -19,11 +19,20 @@ tg-signer bot init
 
 ### 2. 登录 Telegram 账号
 
+**注意：`-a` 是全局选项，必须放在 `tg-signer` 之后，子命令之前。**
+
 ```bash
 tg-signer -a 账号名 login
 ```
 
 按照提示输入手机号和验证码完成登录。
+
+**命令结构说明：**
+```
+tg-signer [全局选项] <子命令> [子命令选项] [参数]
+          ↑         ↑         ↑
+          如 -a     如 bot    如 --ai
+```
 
 ### 3. 创建机器人配置
 
@@ -41,6 +50,8 @@ tg-signer bot config 我的机器人
 
 ### 4. 运行机器人
 
+**重要：`-a` 和 `-p` 是全局选项，必须放在 `bot` 之前！**
+
 ```bash
 # 运行机器人（不启用AI聊天互动，但保留活动问答）
 tg-signer -a 账号名 bot run 我的机器人
@@ -48,8 +59,20 @@ tg-signer -a 账号名 bot run 我的机器人
 # 运行机器人并启用小智AI聊天互动
 tg-signer -a 账号名 bot run 我的机器人 --ai
 
-# 使用代理运行
+# 使用代理运行（注意：-p 在 bot 之前）
 tg-signer -a 账号名 -p socks5://127.0.0.1:7897 bot run 我的机器人 --ai
+```
+
+**常见错误：**
+```bash
+# ❌ 错误：-a 不能放在 bot 之后
+tg-signer bot run -a 账号名 我的机器人
+
+# ❌ 错误：-a 不能放在 bot 和 run 之间
+tg-signer bot -a 账号名 run 我的机器人
+
+# ✅ 正确：-a 必须在 bot 之前
+tg-signer -a 账号名 bot run 我的机器人
 ```
 
 ## CLI 命令详解
@@ -77,6 +100,18 @@ tg-signer bot config my_channel
 
 运行指定的机器人配置。
 
+**重要：此命令必须配合全局 `-a` 选项使用！**
+
+**完整命令格式：**
+```bash
+tg-signer -a <账号名> bot run <配置名> [--ai]
+          ↑          ↑   ↑   ↑         ↑
+        必需全局    |   |   |       可选子命令
+          选项      |   |   |         选项
+                 子命令 | 必需参数
+                    子命令
+```
+
 **参数：**
 - `<配置名>`: 配置文件名称（不含 .json 后缀）
 - `--ai`: 启用小智AI聊天互动
@@ -88,7 +123,7 @@ tg-signer bot config my_channel
 
 **示例：**
 ```bash
-# 基本运行
+# 基本运行（必须指定 -a）
 tg-signer -a my_account bot run my_channel
 
 # 启用AI聊天互动
