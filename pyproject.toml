@@ -24,7 +24,8 @@ dependencies = [
     "croniter",
     "json_repair",
     "typing-extensions",
-    "httpx"
+    "httpx",
+    "python-dotenv"
 ]
 
 [project.urls]

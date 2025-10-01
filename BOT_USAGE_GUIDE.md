@@ -390,16 +390,28 @@ tg-signer bot import new_channel
 
 可以通过 `.env` 文件或系统环境变量配置：
 
+**方式一：使用 .env 文件（推荐）**
+
+在项目根目录创建 `.env` 文件，**注意不要使用 `export` 关键字**：
+
 ```bash
 # Telegram API 凭据
-export TG_API_ID="your_api_id"
-export TG_API_HASH="your_api_hash"
+TG_API_ID=your_api_id
+TG_API_HASH=your_api_hash
 
 # 代理配置
-export TG_PROXY="socks5://127.0.0.1:7897"
+TG_PROXY=socks5://127.0.0.1:7897
 
 # Session String（可选，用于无文件会话）
-export TG_SESSION_STRING="your_session_string"
+TG_SESSION_STRING=your_session_string
+```
+
+**方式二：使用 shell 环境变量**
+
+```bash
+export TG_API_ID="your_api_id"
+export TG_API_HASH="your_api_hash"
+export TG_PROXY="socks5://127.0.0.1:7897"
 ```
 
 **注意：** 推荐使用 `tg-signer bot init` 命令来配置这些环境变量。

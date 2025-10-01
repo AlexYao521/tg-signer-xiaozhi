@@ -48,6 +48,8 @@ pysocks==1.7.1
     # via kurigram
 python-dateutil==2.9.0.post0
     # via croniter
+python-dotenv==1.1.1
+    # via tg-signer (pyproject.toml)
 pytz==2025.1
     # via croniter
 six==1.17.0
