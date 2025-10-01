@@ -96,6 +96,18 @@ tg-signer multi-run -a account_a -a account_b same_task  # Run 'account_a' and '
 
 `tg-signer` doesn't read system proxy. Use `TG_PROXY` env var or `--proxy` parameter:
 
+**Option 1: Use .env file (Recommended)**
+
+Create a `.env` file in the project root directory:
+
+```sh
+TG_PROXY=socks5://127.0.0.1:7890
+TG_API_ID=your_api_id
+TG_API_HASH=your_api_hash
+```
+
+**Option 2: Use environment variables**
+
 ```sh
 export TG_PROXY=socks5://127.0.0.1:7890
 ```

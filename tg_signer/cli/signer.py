@@ -139,6 +139,20 @@ def tg_signer(
     session_string: str,
     in_memory: bool,
 ):
+    # Load .env file if it exists
+    try:
+        from dotenv import load_dotenv, find_dotenv
+        try:
+            dotenv_path = find_dotenv()
+            if not dotenv_path:
+                dotenv_path = '.env'
+        except (AssertionError, Exception):
+            # find_dotenv may fail in some contexts, fallback to '.env'
+            dotenv_path = '.env'
+        load_dotenv(dotenv_path, override=False)  # Don't override existing environment variables
+    except ImportError:
+        pass  # dotenv not installed, skip
+    
     from tg_signer.logger import configure_logger
 
     logger = configure_logger(log_level, log_file)

@@ -165,7 +165,17 @@ tg-signer multi-run -a account_a -a account_b same_task  # 使用'same_task'的�
 
 `tg-signer`不读取系统代理，可以使用环境变量 `TG_PROXY`或命令参数`--proxy`进行配置
 
-例如：
+**方式一：使用 .env 文件（推荐）**
+
+在项目根目录创建 `.env` 文件：
+
+```sh
+TG_PROXY=socks5://127.0.0.1:7890
+TG_API_ID=your_api_id
+TG_API_HASH=your_api_hash
+```
+
+**方式二：使用环境变量**
 
 ```sh
 export TG_PROXY=socks5://127.0.0.1:7890
