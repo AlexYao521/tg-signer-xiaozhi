@@ -19,6 +19,8 @@ from pyrogram.types import Message
 from .bot_config import BotConfig
 from .xiaozhi_client import XiaozhiClient, create_xiaozhi_client
 from .core import Client, get_proxy
+from .activity_manager import ActivityManager
+from .yuanying_tasks import YuanYingTasks
 
 logger = logging.getLogger("tg-signer.bot")
 
@@ -146,6 +148,16 @@ class ChannelBot:
         if config.xiaozhi_ai.authorized_users:
             self.xiaozhi_client = self._load_xiaozhi_client(xiaozhi_config_path)
         
+        # Initialize YuanYing Tasks (元婴任务)
+        self.yuanying_tasks = YuanYingTasks(
+            config, self.state_store, self.command_queue, config.chat_id, account
+        )
+        
+        # Initialize Activity Manager (活动管理器)
+        self.activity_manager = ActivityManager(
+            config.chat_id, account, self.xiaozhi_client
+        )
+        
         # Runtime state
         self._running = False
         self._last_send_time = 0
@@ -209,6 +221,9 @@ class ChannelBot:
         asyncio.create_task(self._command_processor())
         asyncio.create_task(self._daily_reset_task())
         
+        # Start YuanYing tasks if enabled
+        await self.yuanying_tasks.start()
+        
         # Initialize daily tasks if enabled
         if self.config.daily.enable_sign_in:
             await self._schedule_daily_signin()
@@ -236,15 +251,39 @@ class ChannelBot:
     async def _on_message(self, client: Client, message: Message):
         """Handle incoming messages"""
         try:
-            # Check for Xiaozhi AI triggers
-            if self.xiaozhi_client and message.text:
+            handled = False
+            
+            # First, check YuanYing tasks module
+            if await self.yuanying_tasks.handle_message(message):
+                handled = True
+                logger.debug("Message handled by YuanYing tasks")
+            
+            # Check Activity Manager for activity matching
+            if message.text and self.config.activity.enabled:
+                activity_match = self.activity_manager.match_activity(
+                    message.text, 
+                    message,
+                    enable_ai=bool(self.xiaozhi_client and self.config.xiaozhi_ai.authorized_users)
+                )
+                if activity_match:
+                    response_command, response_type, priority = activity_match
+                    logger.info(f"Activity matched: {response_command}")
+                    
+                    # Enqueue the response command/text
+                    await self.command_queue.enqueue(
+                        response_command,
+                        priority=priority,
+                        dedupe_key=f"activity:{response_command}:{self.chat_id}"
+                    )
+                    handled = True
+            
+            # Check for Xiaozhi AI triggers (if not handled by activity)
+            if not handled and self.xiaozhi_client and message.text:
                 await self._handle_xiaozhi_message(message)
             
-            # Check for custom rules
-            await self._handle_custom_rules(message)
-            
-            # Parse response for state updates
-            await self._parse_response(message)
+            # Check for custom rules (if not handled)
+            if not handled:
+                await self._handle_custom_rules(message)
             
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
@@ -323,11 +362,6 @@ class ChannelBot:
                 state[state_key] = time.time()
                 self.state_store.save("custom_rules.json", state)
     
-    async def _parse_response(self, message: Message):
-        """Parse bot responses for state updates"""
-        # This would parse messages for completion of tasks
-        # e.g., "点卯成功", "传功完成", etc.
-        pass
     
     async def _command_processor(self):
         """Background task to process command queue"""

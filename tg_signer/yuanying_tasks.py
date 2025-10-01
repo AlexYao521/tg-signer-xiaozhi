@@ -1,11 +1,11 @@
 """
 元婴任务模块 (YuanYing Tasks Module)
 处理元婴出窍和状态检查
+Based on ARCHITECTURE.md section 4.4 (Periodic Tasks)
 """
 import logging
 import time
 from typing import Optional, Dict, Any
-from dataclasses import dataclass, field
 
 from .cooldown_parser import extract_cooldown_with_fallback, parse_time_remaining
 from .cooldown_config import PERIODIC_COOLDOWNS
@@ -13,20 +13,9 @@ from .cooldown_config import PERIODIC_COOLDOWNS
 logger = logging.getLogger("tg-signer.yuanying")
 
 
-@dataclass
-class YuanYingState:
-    """元婴状态"""
-    status: str = "unknown"  # 可能值: 出窍, 归窍, 温养, unknown
-    last_check_ts: float = 0
-    chuxiao_ts: float = 0  # 上次出窍时间
-    return_countdown_seconds: int = 0  # 归来倒计时(秒)
-    next_check_ts: float = 0
-    next_chuxiao_ts: float = 0
-
-
 class YuanYingTasks:
     """
-    元婴任务管理器
+    元婴任务管理器 (Module-style)
     
     管理任务：
     - .元婴状态 (查询元婴状态)
@@ -36,207 +25,257 @@ class YuanYingTasks:
     1. 元神归窍 - 元婴满载而归，可以立即出窍
     2. 元神出窍 - 元婴正在外游历，显示归来倒计时
     3. 窍中温养 - 元婴在体内温养，可能可以出窍
+    
+    This module follows the same pattern as other modules (HerbGarden, StarObservatory, etc.)
+    and is controlled by config.periodic.enable_yuanying
     """
     
-    def __init__(self, chat_id: int, account: str, enabled: bool = True):
+    def __init__(
+        self,
+        config,
+        state_store,
+        command_queue,
+        chat_id: int,
+        account: str
+    ):
+        self.config = config.periodic  # Access periodic config
+        self.state_store = state_store
+        self.command_queue = command_queue
         self.chat_id = chat_id
         self.account = account
-        self.enabled = enabled
-        self.state = YuanYingState()
+        
+        # State key for this account/chat
+        self.state_key = f"acct_{account}_chat_{chat_id}"
     
-    def load_state(self, state_data: Dict[str, Any]):
-        """从持久化数据加载状态"""
-        if not state_data:
+    async def start(self):
+        """Start yuanying tasks automation"""
+        if not self.config.enable_yuanying:
+            logger.info("YuanYing module disabled")
             return
         
-        self.state.status = state_data.get("status", "unknown")
-        self.state.last_check_ts = state_data.get("last_check_ts", 0)
-        self.state.chuxiao_ts = state_data.get("chuxiao_ts", 0)
-        self.state.return_countdown_seconds = state_data.get("return_countdown_seconds", 0)
-        self.state.next_check_ts = state_data.get("next_check_ts", 0)
-        self.state.next_chuxiao_ts = state_data.get("next_chuxiao_ts", 0)
-        
-        logger.info(f"[元婴] 加载状态: status={self.state.status}")
+        logger.info("Starting YuanYing module")
+        await self._schedule_yuanying_check()
     
-    def save_state(self) -> Dict[str, Any]:
-        """保存状态到字典"""
-        return {
-            "status": self.state.status,
-            "last_check_ts": self.state.last_check_ts,
-            "chuxiao_ts": self.state.chuxiao_ts,
-            "return_countdown_seconds": self.state.return_countdown_seconds,
-            "next_check_ts": self.state.next_check_ts,
-            "next_chuxiao_ts": self.state.next_chuxiao_ts,
-        }
-    
-    def should_check_status(self) -> bool:
-        """检查是否应该查询元婴状态"""
-        if not self.enabled:
-            return False
+    async def _schedule_yuanying_check(self):
+        """Schedule initial yuanying status check"""
+        state = self.state_store.load("yuanying_state.json")
+        yuanying_state = state.get(self.state_key, {})
         
         now = time.time()
-        # 如果从未查询过，或者超过查询间隔，则需要查询
-        return now >= self.state.next_check_ts
-    
-    def should_chuxiao(self) -> bool:
-        """检查是否应该执行元婴出窍"""
-        if not self.enabled:
-            return False
+        next_check = yuanying_state.get("next_check_ts", 0)
         
-        now = time.time()
-        # 如果元婴状态允许出窍，且过了冷却时间
-        return now >= self.state.next_chuxiao_ts and self.state.status in ["归窍", "温养"]
+        # Check if we should check status now
+        if now >= next_check:
+            await self.command_queue.enqueue(
+                ".元婴状态",
+                priority=2,
+                dedupe_key=f"yuanying:check:{self.chat_id}"
+            )
+            logger.info("Scheduled yuanying status check")
+        else:
+            # Schedule for later
+            await self.command_queue.enqueue(
+                ".元婴状态",
+                when=next_check,
+                priority=2,
+                dedupe_key=f"yuanying:check:scheduled:{self.chat_id}"
+            )
+            logger.debug(f"Scheduled yuanying check for {next_check - now:.0f} seconds from now")
     
-    def get_ready_tasks(self) -> list[tuple[str, int, int]]:
+    async def handle_message(self, message) -> bool:
         """
-        获取可以执行的任务
+        Handle incoming message and update state.
         
         Returns:
-            列表of (command, priority, delay_seconds)
+            True if message was handled, False otherwise
         """
-        tasks = []
+        if not message.text:
+            return False
         
-        # 优先级：状态查询 > 出窍
-        if self.should_check_status():
-            tasks.append((".元婴状态", 1, 0))
-            logger.info("[元婴] 任务就绪: .元婴状态")
+        text = message.text
         
-        if self.should_chuxiao():
-            tasks.append((".元婴出窍", 1, 0))
-            logger.info("[元婴] 任务就绪: .元婴出窍")
+        # Parse yuanying status response
+        if "元婴状态" in text or "元神" in text:
+            await self._parse_status_response(text)
+            return True
         
-        return tasks
+        # Parse yuanying chuxiao response
+        if "元婴出窍" in text or "元婴离体" in text or "云游" in text:
+            await self._parse_chuxiao_response(text)
+            return True
+        
+        return False
     
-    def parse_status_response(self, text: str) -> Optional[Dict[str, Any]]:
+    async def _parse_status_response(self, text: str):
         """
         解析 .元婴状态 的响应
         
         Args:
             text: 频道返回文本
-            
-        Returns:
-            解析结果字典，包含状态和后续动作
         """
         if not text:
-            return None
+            return
         
-        result = {
-            "status": "unknown",
-            "next_actions": [],
-            "cooldown_seconds": 30 * 60,  # 默认30分钟后再查询
-        }
+        state = self.state_store.load("yuanying_state.json")
+        yuanying_state = state.get(self.state_key, {})
+        
+        now = time.time()
+        yuanying_state["last_check_ts"] = now
+        
+        # Default cooldown for next check
+        cooldown_seconds = 30 * 60  # 30 minutes
         
         # 识别状态类型
-        if "【元神归窍】" in text or "元婴满载而归" in text:
+        if "【元神归窍】" in text or "元婴满载而归" in text or "归窍" in text:
             # 状态1：元神归窍 - 可以立即出窍
-            result["status"] = "归窍"
-            result["next_actions"] = [".元婴出窍"]
-            result["cooldown_seconds"] = 30  # 30秒后出窍
+            yuanying_state["status"] = "归窍"
+            yuanying_state["can_chuxiao"] = True
+            cooldown_seconds = 30  # 30 seconds before chuxiao
             logger.info("[元婴] 识别状态: 元神归窍 - 可以立即出窍")
+            
+            # Schedule chuxiao
+            await self.command_queue.enqueue(
+                ".元婴出窍",
+                when=now + 30,
+                priority=2,
+                dedupe_key=f"yuanying:chuxiao:{self.chat_id}"
+            )
             
         elif "元神出窍" in text or "状态: 元神出窍" in text:
             # 状态2：元神出窍 - 正在外游历
-            result["status"] = "出窍"
+            yuanying_state["status"] = "出窍"
+            yuanying_state["can_chuxiao"] = False
             
             # 提取归来倒计时
-            # 匹配格式: "归来倒计时: 3小时20分钟" 或 "剩余: 2小时30分钟"
             countdown = parse_time_remaining(text)
             if countdown:
-                result["return_countdown_seconds"] = countdown
+                yuanying_state["return_countdown_seconds"] = countdown
                 # 在归来前2分钟安排预扫
-                result["cooldown_seconds"] = max(countdown - 120, 60)
+                cooldown_seconds = max(countdown - 120, 60)
                 logger.info(f"[元婴] 识别状态: 元神出窍 - 归来倒计时{countdown}秒")
             else:
                 # 没有找到倒计时，使用默认查询间隔
-                result["cooldown_seconds"] = 30 * 60
                 logger.info("[元婴] 识别状态: 元神出窍 - 未找到倒计时")
             
         elif "窍中温养" in text or "状态: 窍中温养" in text:
             # 状态3：窍中温养 - 可能可以出窍
-            result["status"] = "温养"
+            yuanying_state["status"] = "温养"
             
             # 检查是否可以出窍
             if "可以出窍" in text or "已完成温养" in text:
-                result["next_actions"] = [".元婴出窍"]
-                result["cooldown_seconds"] = 30  # 30秒后出窍
+                yuanying_state["can_chuxiao"] = True
+                cooldown_seconds = 30  # 30秒后出窍
                 logger.info("[元婴] 识别状态: 窍中温养 - 可以出窍")
+                
+                # Schedule chuxiao
+                await self.command_queue.enqueue(
+                    ".元婴出窍",
+                    when=now + 30,
+                    priority=2,
+                    dedupe_key=f"yuanying:chuxiao:{self.chat_id}"
+                )
             else:
                 # 检查是否在冷却中
+                yuanying_state["can_chuxiao"] = False
                 cooldown = extract_cooldown_with_fallback(text, "元婴出窍")
-                result["cooldown_seconds"] = cooldown
+                cooldown_seconds = cooldown
                 logger.info(f"[元婴] 识别状态: 窍中温养 - 冷却中({cooldown}秒)")
         
         else:
             # 未识别的状态
             logger.warning(f"[元婴] 未识别的状态文本: {text[:100]}")
-            result["cooldown_seconds"] = 30 * 60  # 默认30分钟后再查询
+            yuanying_state["status"] = "unknown"
         
-        # 更新内部状态
-        now = time.time()
-        self.state.status = result["status"]
-        self.state.last_check_ts = now
-        self.state.return_countdown_seconds = result.get("return_countdown_seconds", 0)
-        self.state.next_check_ts = now + result["cooldown_seconds"]
+        # Schedule next check
+        yuanying_state["next_check_ts"] = now + cooldown_seconds
+        await self.command_queue.enqueue(
+            ".元婴状态",
+            when=now + cooldown_seconds,
+            priority=2,
+            dedupe_key=f"yuanying:check:next:{self.chat_id}"
+        )
         
-        return result
+        # Save state
+        state[self.state_key] = yuanying_state
+        self.state_store.save("yuanying_state.json", state)
     
-    def parse_chuxiao_response(self, text: str) -> Optional[Dict[str, Any]]:
+    async def _parse_chuxiao_response(self, text: str):
         """
         解析 .元婴出窍 的响应
         
         Args:
             text: 频道返回文本
-            
-        Returns:
-            解析结果字典
         """
         if not text:
-            return None
+            return
         
-        result = {
-            "success": False,
-            "cooldown_seconds": 8 * 3600,  # 默认8小时
-        }
+        state = self.state_store.load("yuanying_state.json")
+        yuanying_state = state.get(self.state_key, {})
+        
+        now = time.time()
         
         # 识别成功标识
         success_keywords = ["云游", "出窍成功", "元婴离体"]
         if any(kw in text for kw in success_keywords):
-            result["success"] = True
+            # Success - yuanying is now out
+            yuanying_state["status"] = "出窍"
+            yuanying_state["can_chuxiao"] = False
+            yuanying_state["last_chuxiao_ts"] = now
             
             # 提取冷却时间 (例如: "云游 8 小时")
             cooldown = extract_cooldown_with_fallback(text, "元婴出窍")
-            result["cooldown_seconds"] = cooldown
+            yuanying_state["chuxiao_cooldown"] = cooldown
             
-            # 更新状态
-            now = time.time()
-            self.state.status = "出窍"
-            self.state.chuxiao_ts = now
-            self.state.next_chuxiao_ts = now + cooldown
-            # 在归来前2分钟安排状态查询
-            self.state.next_check_ts = now + cooldown - 120
+            # Schedule status check before return (2 minutes early)
+            next_check = now + cooldown - 120
+            yuanying_state["next_check_ts"] = next_check
             
-            logger.info(f"[元婴] 出窍成功，冷却{cooldown}秒")
+            await self.command_queue.enqueue(
+                ".元婴状态",
+                when=next_check,
+                priority=2,
+                dedupe_key=f"yuanying:check:before_return:{self.chat_id}"
+            )
+            
+            logger.info(f"[元婴] 出窍成功，冷却{cooldown}秒，将在归来前2分钟检查")
         
         else:
-            # 检查是否在冷却中
+            # Check if in cooldown
             if "冷却" in text or "请在" in text or "后再" in text:
                 cooldown = extract_cooldown_with_fallback(text, "元婴出窍")
-                result["cooldown_seconds"] = cooldown
+                yuanying_state["chuxiao_cooldown"] = cooldown
                 
-                now = time.time()
-                self.state.next_chuxiao_ts = now + cooldown
+                # Schedule status check after cooldown
+                next_check = now + cooldown
+                yuanying_state["next_check_ts"] = next_check
+                
+                await self.command_queue.enqueue(
+                    ".元婴状态",
+                    when=next_check,
+                    priority=2,
+                    dedupe_key=f"yuanying:check:after_cooldown:{self.chat_id}"
+                )
                 
                 logger.info(f"[元婴] 出窍失败，冷却{cooldown}秒")
             else:
                 logger.warning(f"[元婴] 未识别的出窍响应: {text[:100]}")
         
-        return result
+        # Save state
+        state[self.state_key] = yuanying_state
+        self.state_store.save("yuanying_state.json", state)
     
-    def mark_guiqiao(self):
-        """标记元婴归窍（被动监听到归窍消息时调用）"""
-        now = time.time()
-        self.state.status = "归窍"
-        self.state.next_chuxiao_ts = now + 30  # 30秒后可以出窍
-        self.state.next_check_ts = now + 30
+    def get_status(self) -> Dict[str, Any]:
+        """Get current yuanying status"""
+        state = self.state_store.load("yuanying_state.json")
+        yuanying_state = state.get(self.state_key, {})
         
-        logger.info("[元婴] 标记元神归窍，30秒后可出窍")
+        return {
+            "enabled": self.config.enable_yuanying,
+            "status": yuanying_state.get("status", "unknown"),
+            "can_chuxiao": yuanying_state.get("can_chuxiao", False),
+            "last_check": yuanying_state.get("last_check_ts"),
+            "next_check": yuanying_state.get("next_check_ts"),
+            "last_chuxiao": yuanying_state.get("last_chuxiao_ts"),
+            "return_countdown": yuanying_state.get("return_countdown_seconds", 0)
+        }
+
