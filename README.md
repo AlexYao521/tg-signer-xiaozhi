@@ -18,6 +18,40 @@
   - 灵活的指令-响应配置（JSON可扩展）
   - 交互式CLI命令引导
 
+### 🏗️ 模块化架构 (v1.1 更新)
+
+本项目已完成模块化重构，采用清晰的分层架构：
+
+**核心功能模块** (独立Python文件):
+- 📅 `daily_routine.py` - 每日任务管理 (点卯/传功/问安)
+- ⏰ `periodic_tasks.py` - 周期任务管理 (闭关/引道/问道/裂缝/启阵)
+- ⭐ `star_observation.py` - 星宫自动化 (安抚→观星→牵引→收集)
+- 🌿 `herb_garden.py` - 小药园自动化 (维护→采药→播种)
+- 🎯 `activity_manager.py` - 活动识别与响应 (5种活动模式)
+
+**工具模块**:
+- ⏱️ `cooldown_parser.py` - 智能冷却时间解析 (支持"12小时30分钟"格式)
+- ⚙️ `cooldown_config.py` - 冷却配置常量 (所有任务冷却时间)
+- 📝 `logger.py` - 按账号分离的日志系统 (`logs/<account>/`)
+
+**文档**:
+- 📖 [PROJECT_ARCHITECTURE.md](./PROJECT_ARCHITECTURE.md) - 完整架构文档
+- 📋 [COOLDOWN_RULES.md](./COOLDOWN_RULES.md) - 冷却规则详细说明
+- 💼 [ENTERPRISE_TODO.md](./ENTERPRISE_TODO.md) - 80+企业级改进建议
+- 🎭 [活动回复词.md](./活动回复词.md) - 活动响应规范
+
+**测试覆盖**:
+- ✅ 45个单元测试 (100%通过)
+- ✅ 冷却解析器完整测试
+- ✅ 真实场景测试用例
+
+**关键特性**:
+- ✅ 星宫操作顺序：永远先`.安抚星辰`，再`.观星台`
+- ✅ 智能冷却解析：自动提取并回退到默认值
+- ✅ 按账号日志分离：`logs/<account>/<account>.log`
+- ✅ 活动自动识别：魂魄献祭、天机考验、洞府访客等
+- ✅ 消息智能过滤：Thread ID、@mention、Reply ID匹配
+
   **...**
 
 ### 安装
