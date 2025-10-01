@@ -100,7 +100,7 @@ class CommandQueue:
         when = when or time.time()
 
         if dedupe_key and dedupe_key in self._pending:
-            logger.debug(f"Command deduplicated: {dedupe_key}")
+            logger.debug(f"[队列] 指令已去重: {command} (key={dedupe_key})")
             return False
 
         self._order += 1
@@ -113,7 +113,12 @@ class CommandQueue:
             if callback:
                 self._callbacks[dedupe_key] = callback
 
-        logger.debug(f"Enqueued command: {command} (when={when}, priority={priority}, key={dedupe_key})")
+        # Calculate delay for logging
+        delay = when - time.time()
+        if delay > 1:
+            logger.info(f"[队列] 加入指令: {command} (优先级=P{priority}, 延迟={delay:.1f}秒, key={dedupe_key})")
+        else:
+            logger.info(f"[队列] 加入指令: {command} (优先级=P{priority}, 立即执行, key={dedupe_key})")
         return True
 
     async def dequeue(self) -> tuple[str, Optional[str], Optional[callable]]:
@@ -128,11 +133,14 @@ class CommandQueue:
         # Wait until scheduled time
         now = time.time()
         if when > now:
-            await asyncio.sleep(when - now)
+            wait_time = when - now
+            logger.debug(f"[队列] 等待 {wait_time:.1f}秒后执行: {command}")
+            await asyncio.sleep(wait_time)
 
         if dedupe_key:
             self._command_states[dedupe_key] = "executing"
-
+        
+        logger.info(f"[队列] 取出指令: {command} (优先级=P{priority})")
         return command, dedupe_key, callback
 
     def mark_completed(self, dedupe_key: str, success: bool = True):
@@ -224,6 +232,10 @@ class ChannelBot:
         self._running = False
         self._last_send_time = 0
         self._message_handlers = []
+        
+        # Background task references
+        self._command_processor_task = None
+        self._daily_reset_task = None
 
     def _create_client(
         self, account: str, proxy: str, session_dir: str,
@@ -279,9 +291,10 @@ class ChannelBot:
         # Register message handlers
         self._register_handlers()
 
-        # Start background tasks
-        asyncio.create_task(self._command_processor())
-        asyncio.create_task(self._daily_reset_task())
+        # Start background tasks - store references to track them
+        self._command_processor_task = asyncio.create_task(self._command_processor())
+        self._daily_reset_task = asyncio.create_task(self._daily_reset_task())
+        logger.info("[核心] 后台任务已启动: 指令处理器、每日重置")
 
         # Start all modules with staggered delays to avoid slowmode
         # Each module will enqueue commands with internal delays,
@@ -289,32 +302,54 @@ class ChannelBot:
         module_delay = 0
         
         # Daily tasks first (highest priority)
+        logger.info("[核心] 启动每日任务模块...")
         await self.daily_routine.start()
         module_delay += 5  # Give daily tasks time to enqueue
         
         # Periodic tasks next
         await asyncio.sleep(module_delay)
+        logger.info("[核心] 启动周期任务模块...")
         await self.periodic_tasks.start()
         module_delay = 5
         
         # Herb garden
         await asyncio.sleep(module_delay)
+        logger.info("[核心] 启动小药园模块...")
         await self.herb_garden.start()
         module_delay = 5
         
         # Star observation last
         await asyncio.sleep(module_delay)
+        logger.info("[核心] 启动观星台模块...")
         await self.star_observation.start()
+        
+        logger.info("[核心] 所有模块启动完成")
 
     async def stop(self):
         """Stop the bot"""
+        logger.info("[核心] 正在停止机器人...")
         self._running = False
+
+        # Cancel background tasks
+        if self._command_processor_task:
+            self._command_processor_task.cancel()
+            try:
+                await self._command_processor_task
+            except asyncio.CancelledError:
+                pass
+        
+        if self._daily_reset_task:
+            self._daily_reset_task.cancel()
+            try:
+                await self._daily_reset_task
+            except asyncio.CancelledError:
+                pass
 
         if self.xiaozhi_client:
             await self.xiaozhi_client.stop()
 
         await self.client.stop()
-        logger.info("Bot stopped")
+        logger.info("[核心] 机器人已停止")
 
     def _register_handlers(self):
         """Register message handlers"""
@@ -359,8 +394,12 @@ class ChannelBot:
                 should_process = True
             
             if not should_process:
-                logger.debug(f"Skipping message from user {getattr(message.from_user, 'id', 'unknown')} (not bot, no mention)")
+                logger.debug(f"[消息] 跳过非相关消息")
                 return
+            
+            # Log incoming message for debugging
+            msg_preview = message.text[:50] if message.text else "(无文本)"
+            logger.debug(f"[消息] 收到: {msg_preview}...")
             
             handled = False
 
@@ -370,22 +409,22 @@ class ChannelBot:
             # 1. Daily Routine
             if await self.daily_routine.handle_message(message):
                 handled = True
-                logger.debug("Message handled by Daily Routine")
+                logger.debug("[消息] 由每日任务模块处理")
 
             # 2. Periodic Tasks (闭关、引道、启阵、问道、裂缝)
             if not handled and await self.periodic_tasks.handle_message(message):
                 handled = True
-                logger.debug("Message handled by Periodic Tasks")
+                logger.debug("[消息] 由周期任务模块处理")
 
             # 3. Star Observation (观星台)
             if not handled and await self.star_observation.handle_message(message):
                 handled = True
-                logger.debug("Message handled by Star Observation")
+                logger.debug("[消息] 由观星台模块处理")
 
             # 4. Herb Garden (小药园)
             if not handled and await self.herb_garden.handle_message(message):
                 handled = True
-                logger.debug("Message handled by Herb Garden")
+                logger.debug("[消息] 由小药园模块处理")
 
             # 5. Check Activity Manager for activity matching
             if not handled and message.text and self.config.activity.enabled:
@@ -396,7 +435,7 @@ class ChannelBot:
                 )
                 if activity_match:
                     response_command, response_type, priority = activity_match
-                    logger.info(f"[活动] 匹配成功，响应: {response_command} (优先级={priority})")
+                    logger.info(f"[活动] 匹配成功，响应: {response_command} (优先级=P{priority})")
 
                     # Time-sensitive activities use priority=0 for immediate/high-priority execution
                     # This ensures they are processed before other queued commands
@@ -414,9 +453,12 @@ class ChannelBot:
             # 7. Check for custom rules (if not handled)
             if not handled:
                 await self._handle_custom_rules(message)
+            
+            if not handled:
+                logger.debug(f"[消息] 未被任何模块处理")
 
         except Exception as e:
-            logger.error(f"Error handling message: {e}", exc_info=True)
+            logger.error(f"[消息] 处理错误: {e}", exc_info=True)
 
     async def _handle_xiaozhi_message(self, message: Message):
         """Handle messages that might trigger Xiaozhi AI"""
@@ -513,29 +555,38 @@ class ChannelBot:
         - State tracking (pending -> executing -> completed/failed)
         - Callback execution after command completion
         """
+        logger.info("[队列] 指令处理器已启动")
         while self._running:
             try:
                 if not self.command_queue.empty():
                     command, dedupe_key, callback = await self.command_queue.dequeue()
+                    logger.info(f"[队列] 开始执行: {command}")
                     success = await self._send_command(command, dedupe_key)
                     
                     # Mark command as completed/failed
                     if dedupe_key:
                         self.command_queue.mark_completed(dedupe_key, success)
+                        if success:
+                            logger.debug(f"[队列] 指令完成: {command}")
+                        else:
+                            logger.warning(f"[队列] 指令失败: {command}")
                     
                     # Execute callback if provided
                     if callback and success:
                         try:
+                            logger.debug(f"[队列] 执行回调: {command}")
                             if asyncio.iscoroutinefunction(callback):
                                 await callback()
                             else:
                                 callback()
                         except Exception as e:
-                            logger.error(f"Error executing callback for '{command}': {e}", exc_info=True)
+                            logger.error(f"[队列] 回调失败 '{command}': {e}", exc_info=True)
                 else:
                     await asyncio.sleep(1)
             except Exception as e:
-                logger.error(f"Error in command processor: {e}", exc_info=True)
+                logger.error(f"[队列] 处理器错误: {e}", exc_info=True)
+        
+        logger.info("[队列] 指令处理器已停止")
 
     async def _send_command(self, command: str, dedupe_key: str = None) -> bool:
         """
@@ -552,15 +603,18 @@ class ChannelBot:
         now = time.time()
         elapsed = now - self._last_send_time
         if elapsed < self.config.min_send_interval:
-            await asyncio.sleep(self.config.min_send_interval - elapsed)
+            wait_time = self.config.min_send_interval - elapsed
+            logger.debug(f"[发送] 速率限制，等待{wait_time:.1f}秒")
+            await asyncio.sleep(wait_time)
 
         try:
             # Check if transmission needs reply_to
             reply_to_message_id = None
             if "宗门传功" in command and self.daily_routine.state.last_message_id:
                 reply_to_message_id = self.daily_routine.state.last_message_id
-                logger.debug(f"Sending transmission with reply_to: {reply_to_message_id}")
+                logger.debug(f"[发送] 传功需要回复消息ID: {reply_to_message_id}")
 
+            logger.info(f"[发送] 正在发送: {command}")
             message = await self.client.send_message(
                 self.config.chat_id,
                 command,
@@ -571,12 +625,34 @@ class ChannelBot:
             # Track message ID for future replies (especially for transmission)
             if message and message.id:
                 self.daily_routine.update_last_message_id(message.id)
+                logger.debug(f"[发送] 消息ID: {message.id}")
 
-            logger.info(f"✓ Sent command: {command}")
+            logger.info(f"[发送] ✓ 发送成功: {command}")
             return True
             
         except Exception as e:
-            logger.error(f"✗ Failed to send command '{command}': {e}")
+            error_msg = str(e)
+            
+            # Handle slowmode errors specially
+            if "SLOWMODE_WAIT" in error_msg:
+                import re
+                wait_match = re.search(r'wait (\d+) seconds', error_msg)
+                if wait_match:
+                    wait_seconds = int(wait_match.group(1))
+                    logger.warning(f"[发送] ✗ 慢速模式限制，需等待{wait_seconds}秒: {command}")
+                    # Re-enqueue the command after the wait time
+                    await self.command_queue.enqueue(
+                        command,
+                        when=time.time() + wait_seconds + 1,
+                        priority=0,  # High priority for retry
+                        dedupe_key=f"{dedupe_key}_retry" if dedupe_key else None
+                    )
+                    return False
+                else:
+                    logger.warning(f"[发送] ✗ 慢速模式限制: {command}")
+            else:
+                logger.error(f"[发送] ✗ 发送失败 '{command}': {error_msg}")
+            
             return False
 
     async def _daily_reset_task(self):
