@@ -14,6 +14,7 @@
     "enable_yuanying": true,
     "enable_rift_explore": true
   },
+  "comment_periodic": "周期任务配置 - enable_yuanying控制元婴任务是否启用，无需手动继承或集成",
   "star_observation": {
     "enabled": true,
     "default_star": "天雷星",
