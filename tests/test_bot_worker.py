@@ -20,14 +20,15 @@ def mock_config():
 
 @pytest.fixture
 def mock_message():
-    """Create a mock Telegram message"""
+    """Create a mock Telegram message from a bot"""
     message = Mock(spec=Message)
     message.text = "Test message"
     message.chat = Mock(spec=Chat)
     message.chat.id = -1001234567890
     message.from_user = Mock(spec=User)
     message.from_user.id = 123456
-    message.from_user.username = "testuser"
+    message.from_user.username = "testbot"
+    message.from_user.is_bot = True  # Mark as bot message
     message.entities = None
     return message
 

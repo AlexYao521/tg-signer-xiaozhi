@@ -283,10 +283,27 @@ class ChannelBot:
         asyncio.create_task(self._command_processor())
         asyncio.create_task(self._daily_reset_task())
 
-        # Start all modules
+        # Start all modules with staggered delays to avoid slowmode
+        # Each module will enqueue commands with internal delays,
+        # but we also stagger module initialization to spread out enqueuing
+        module_delay = 0
+        
+        # Daily tasks first (highest priority)
         await self.daily_routine.start()
+        module_delay += 5  # Give daily tasks time to enqueue
+        
+        # Periodic tasks next
+        await asyncio.sleep(module_delay)
         await self.periodic_tasks.start()
+        module_delay = 5
+        
+        # Herb garden
+        await asyncio.sleep(module_delay)
         await self.herb_garden.start()
+        module_delay = 5
+        
+        # Star observation last
+        await asyncio.sleep(module_delay)
         await self.star_observation.start()
 
     async def stop(self):
@@ -312,6 +329,39 @@ class ChannelBot:
     async def _on_message(self, client: Client, message: Message):
         """Handle incoming messages"""
         try:
+            # Filter messages based on sender type
+            # We want to process:
+            # 1. Messages from bots (for command responses from channel bot)
+            # 2. Messages that mention us (for activities/interactions)
+            # Skip regular user messages that don't mention us
+            
+            should_process = False
+            
+            if message.from_user:
+                is_bot = getattr(message.from_user, 'is_bot', False)
+                if is_bot:
+                    # Process all bot messages (command responses)
+                    should_process = True
+                else:
+                    # For non-bot messages, check if it mentions us
+                    has_mention = False
+                    if message.entities:
+                        for entity in message.entities:
+                            entity_type = getattr(entity.type, 'name', str(entity.type))
+                            if entity_type in ("MENTION", "TEXT_MENTION"):
+                                has_mention = True
+                                break
+                    
+                    if has_mention:
+                        should_process = True
+            else:
+                # Messages without from_user (channel posts) - process them
+                should_process = True
+            
+            if not should_process:
+                logger.debug(f"Skipping message from user {getattr(message.from_user, 'id', 'unknown')} (not bot, no mention)")
+                return
+            
             handled = False
 
             # Check modules in order (following ARCHITECTURE.md pipeline)
