@@ -39,11 +39,10 @@ class ActivityManager:
         """加载活动模式定义"""
         patterns = []
         
-        # 第一种：魂魄献祭活动
+        # 第一种：魂魄献祭活动 - 只匹配回复指令，不匹配开头描述
         patterns.append(ActivityPattern(
             name="魂魄献祭",
             patterns=[
-                r"你感到一股无法抗拒的意志锁定了你的神魂",
                 r"回复本消息\s+\.献上魂魄",
                 r"回复本消息\s+\.收敛气息"
             ],
@@ -52,49 +51,56 @@ class ActivityManager:
             priority=0  # 高优先级
         ))
         
-        # 第二种：天机考验（选择题）
+        # 第二种：天机考验（选择题）- 动态题目，使用AI回答
         patterns.append(ActivityPattern(
             name="天机考验_选择题",
             patterns=[
-                r"【天机考验】.*请在.*根据以下问题.*直接回复本消息",
-                r"以下.*件物品中.*哪一件.*核心材料",
-                r"A\..*B\..*C\..*D\."
+                r"【天机考验】",
+                r"直接回复本消息",
             ],
             response_type="ai_query",
             response_value=None,  # 需要AI回答
             priority=0
         ))
         
-        # 第三种：天机考验（指令题）
+        # 第三种：天机考验（指令题）- 动态指令，只识别特定格式
         patterns.append(ActivityPattern(
             name="天机考验_指令题",
             patterns=[
-                r"【天机考验】.*请在.*使用\.我的宗门指令自省",
-                r"天机有感.*道心.*蒙尘"
+                r"【天机考验】",
+                r"使用.+指令"
             ],
-            response_type="reply_command",
-            response_value=".我的宗门",
+            response_type="ai_query",
+            response_value="command",  # 特殊标记，表示需要提取指令
             priority=0
         ))
         
-        # 第四种：虚天殿问答
+        # 第四种：虚天殿问答 - 只匹配 .作答 格式
         patterns.append(ActivityPattern(
             name="虚天殿问答",
             patterns=[
-                r"神念直入脑海.*向.*提问",
-                r"回复本消息并使用\s+\.作答\s+<选项>",
-                r"A\..*B\..*C\..*D\."
+                r"\.作答",
             ],
             response_type="ai_query",
             response_value="作答",  # 特殊标记
             priority=0
         ))
         
-        # 第五种：洞府访客
+        # 第五种：洞府访客 - 只匹配指令（接待要在查看前面，避免误匹配）
+        patterns.append(ActivityPattern(
+            name="洞府访客_接待",
+            patterns=[
+                r"\.接待访客",
+                r"\.驱逐访客"
+            ],
+            response_type="reply_command",
+            response_value=".接待访客",
+            priority=0
+        ))
+        
         patterns.append(ActivityPattern(
             name="洞府访客_查看",
             patterns=[
-                r"【洞府传音】",
                 r"\.查看访客"
             ],
             response_type="reply_command",
@@ -102,25 +108,16 @@ class ActivityManager:
             priority=0
         ))
         
-        patterns.append(ActivityPattern(
-            name="洞府访客_接待",
-            patterns=[
-                r"使用\s+\.接待访客\s+或\s+\.驱逐访客"
-            ],
-            response_type="reply_command",
-            response_value=".接待访客",
-            priority=0
-        ))
-        
         return patterns
     
-    def match_activity(self, text: str, message) -> Optional[tuple[str, str, int]]:
+    def match_activity(self, text: str, message, enable_ai: bool = True) -> Optional[tuple[str, str, int]]:
         """
         匹配活动模式
         
         Args:
             text: 消息文本
             message: Telegram消息对象
+            enable_ai: 是否启用AI查询（控制AI功能）
             
         Returns:
             (response_command, response_type, priority) 如果匹配成功
@@ -128,15 +125,28 @@ class ActivityManager:
         if not text:
             return None
         
-        # 检查消息是否@了机器人
-        # 注意：message.entities 可能包含mention信息
-        
         for pattern in self.activity_patterns:
-            # 检查所有模式是否匹配
+            # 使用 in 操作符进行简单匹配，而不是正则表达式
+            # 对于虚天殿问答和洞府访客，直接用 in 就够了
             match_count = 0
-            for regex in pattern.patterns:
-                if re.search(regex, text, re.IGNORECASE):
-                    match_count += 1
+            
+            if pattern.name == "虚天殿问答":
+                # 只需要匹配 .作答 即可
+                if ".作答" in text:
+                    match_count = 1
+            elif pattern.name == "洞府访客_接待":
+                # 优先匹配接待或驱逐（比查看更具体）
+                if ".接待访客" in text or ".驱逐访客" in text:
+                    match_count = 1
+            elif pattern.name == "洞府访客_查看":
+                # 只匹配查看访客
+                if ".查看访客" in text:
+                    match_count = 1
+            else:
+                # 其他活动使用正则匹配
+                for regex in pattern.patterns:
+                    if re.search(regex, text, re.IGNORECASE):
+                        match_count += 1
             
             # 至少匹配一个模式即可
             if match_count > 0:
@@ -146,6 +156,11 @@ class ActivityManager:
                     return (pattern.response_value, "command", pattern.priority)
                 
                 elif pattern.response_type == "ai_query":
+                    # 检查是否启用AI
+                    if not enable_ai:
+                        logger.info(f"[活动] AI功能未启用，跳过: {pattern.name}")
+                        return None
+                    
                     # 需要调用小智AI获取答案
                     response = self._query_xiaozhi(text, pattern)
                     if response:
@@ -171,16 +186,85 @@ class ActivityManager:
             logger.warning("[活动] 未配置小智AI客户端")
             return None
         
-        # 构造查询文本（添加前缀）
-        query = f"获取问题答案：{text}"
+        try:
+            # 使用 ai_tools 中的函数获取答案
+            from .ai_tools import calculate_problem
+            import asyncio
+            
+            # 对于天机考验指令题，需要提取指令
+            if pattern.name == "天机考验_指令题" and pattern.response_value == "command":
+                # 从文本中提取指令 (例如: "使用.我的宗门指令自省")
+                import re
+                cmd_match = re.search(r'使用(\.[\u4e00-\u9fa5]+)指令', text)
+                if cmd_match:
+                    command = cmd_match.group(1)
+                    logger.info(f"[活动] 提取到指令: {command}")
+                    return command
+                else:
+                    logger.warning("[活动] 无法提取指令")
+                    return ".我的宗门"  # 默认指令
+            
+            # 对于选择题，使用AI获取答案
+            # 构造查询
+            if pattern.name in ["天机考验_选择题", "虚天殿问答"]:
+                # 同步调用异步函数（这里需要在实际使用时改为异步）
+                # 暂时返回占位符，实际使用时需要通过回调或异步处理
+                logger.info(f"[活动] 需要AI回答问题: {text[:100]}")
+                
+                # 对于虚天殿问答，需要格式化为 .作答 X
+                if pattern.name == "虚天殿问答" and pattern.response_value == "作答":
+                    # 这里应该调用AI获取答案，然后格式化
+                    # 暂时返回None，表示需要异步处理
+                    return None
+                
+                # 对于天机考验选择题，直接返回答案字母
+                return None
+            
+        except Exception as e:
+            logger.error(f"[活动] 查询小智AI失败: {e}", exc_info=True)
+            return None
+        
+        return None
+    
+    async def query_xiaozhi_async(self, text: str, pattern: ActivityPattern) -> Optional[str]:
+        """
+        异步查询小智AI获取答案（推荐使用此方法）
+        
+        Args:
+            text: 原始问题文本
+            pattern: 活动模式
+            
+        Returns:
+            答案文本
+        """
+        # 对于天机考验指令题，直接提取指令，不需要AI客户端
+        if pattern.name == "天机考验_指令题" and pattern.response_value == "command":
+            import re
+            cmd_match = re.search(r'使用(\.[\u4e00-\u9fa5]+)指令', text)
+            if cmd_match:
+                command = cmd_match.group(1)
+                logger.info(f"[活动] 提取到指令: {command}")
+                return command
+            else:
+                logger.warning("[活动] 无法提取指令")
+                return ".我的宗门"
+        
+        # 其他情况需要AI客户端
+        if not self.xiaozhi_client:
+            logger.warning("[活动] 未配置小智AI客户端")
+            return None
         
         try:
-            # 同步调用（需要改为异步版本）
-            answer = self._sync_query_xiaozhi(query)
+            # 使用 ai_tools 获取答案
+            from .ai_tools import calculate_problem
             
-            # 对于虚天殿问答，需要格式化为 .作答 X
+            # 构造问题提示
+            query = f"请回答以下问题：{text}"
+            
+            answer = await calculate_problem(query)
+            
+            # 对于虚天殿问答，格式化为 .作答 X
             if pattern.name == "虚天殿问答" and pattern.response_value == "作答":
-                # 假设AI返回的是选项字母（A、B、C、D）
                 answer = f".作答 {answer.strip()}"
             
             logger.info(f"[活动] 小智AI回答: {answer}")
@@ -189,15 +273,6 @@ class ActivityManager:
         except Exception as e:
             logger.error(f"[活动] 查询小智AI失败: {e}", exc_info=True)
             return None
-    
-    def _sync_query_xiaozhi(self, query: str) -> str:
-        """
-        同步查询小智（占位实现）
-        实际使用时需要根据xiaozhi_client的实际接口调整
-        """
-        # 这里需要根据实际的xiaozhi_client接口实现
-        # 暂时返回占位符
-        return "A"
     
     def should_respond_to_message(self, message) -> bool:
         """

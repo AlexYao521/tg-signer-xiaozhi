@@ -3,10 +3,11 @@ import os
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
+# 更好的格式化，使用固定宽度的字段以便对齐
 format_str = (
-    "[%(levelname)s] [%(name)s] %(asctime)s %(filename)s %(lineno)s %(message)s"
+    "%(asctime)s | %(levelname)-8s | %(name)-30s | %(filename)-20s:%(lineno)-4d | %(message)s"
 )
-formatter = logging.Formatter(format_str)
+formatter = logging.Formatter(format_str, datefmt="%Y-%m-%d %H:%M:%S")
 
 
 def configure_logger(
@@ -115,3 +116,48 @@ def get_account_logger(account: str, log_level: str = "INFO") -> logging.Logger:
     logger.addHandler(console_handler)
     
     return logger
+
+
+def log_step(logger: logging.Logger, step: str, status: str = "开始", details: str = ""):
+    """
+    记录步骤进度，使用统一格式
+    
+    Args:
+        logger: logger对象
+        step: 步骤名称
+        status: 状态 (开始/完成/失败)
+        details: 详细信息
+    """
+    status_emoji = {
+        "开始": "▶",
+        "完成": "✓",
+        "失败": "✗",
+        "跳过": "⊘",
+    }
+    emoji = status_emoji.get(status, "•")
+    
+    msg = f"{emoji} [{step}] {status}"
+    if details:
+        msg += f" - {details}"
+    
+    if status == "失败":
+        logger.error(msg)
+    elif status == "完成":
+        logger.info(msg)
+    else:
+        logger.info(msg)
+
+
+def log_separator(logger: logging.Logger, title: str = ""):
+    """
+    记录分隔线，用于区分不同的执行阶段
+    
+    Args:
+        logger: logger对象
+        title: 标题（可选）
+    """
+    if title:
+        logger.info(f"{'='*20} {title} {'='*20}")
+    else:
+        logger.info("="*60)
+
