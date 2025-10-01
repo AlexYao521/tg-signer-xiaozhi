@@ -9,14 +9,38 @@
 - 调用AI进行图片识别并点击键盘
 - 个人、群组、频道消息监控、转发与自动回复
 - 根据配置执行动作流
-- **新增：频道自动化机器人** (Channel Automation Bot)
+- **新增：频道自动化机器人** (Channel Automation Bot) - [📖 完整使用指南](./BOT_USAGE_GUIDE.md)
   - 每日例行任务自动化（点卯、传功、问安）
   - 周期任务自动化（启阵、助阵、问道、引道、元婴、裂缝探索）
   - 观星台自动化（观星、牵引、收集、安抚）
   - 小药园自动化（扫描、维护、采药、播种）
-  - 小智AI集成（WebSocket/MQTT双通道支持）
+  - 小智AI集成（WebSocket连接，支持自动重连）
   - 灵活的指令-响应配置（JSON可扩展）
   - 交互式CLI命令引导
+  - 一键初始化配置 `tg-signer bot init`
+
+### 🚀 快速开始（频道自动化机器人）
+
+```bash
+# 1. 初始化配置
+tg-signer bot init
+
+# 2. 登录账号
+tg-signer -a 账号名 login
+
+# 3. 创建机器人配置
+tg-signer bot config 我的机器人
+
+# 4. 运行机器人（启用AI聊天互动）
+tg-signer -a 账号名 bot run 我的机器人 --ai
+
+# 5. 运行机器人（仅活动问答，不启用AI聊天）
+tg-signer -a 账号名 bot run 我的机器人
+```
+
+**详细文档**: 
+- 📖 [BOT_USAGE_GUIDE.md](./BOT_USAGE_GUIDE.md) - 完整使用指南
+- 📋 [INTEGRATION_STATUS.md](./INTEGRATION_STATUS.md) - 集成状态报告
 
 ### 🏗️ 模块化架构 (v1.1 更新)
 
