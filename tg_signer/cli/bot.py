@@ -94,7 +94,14 @@ def run_bot(obj, config_name: str, xiaozhi_config: Optional[str], ai: bool):
         loop.run_until_complete(bot.run())
         
     except Exception as e:
-        click.echo(f"运行机器人失败: {e}")
+        if "TG_API_ID and TG_API_HASH must be set" in str(e):
+            click.echo(f"运行机器人失败: {e}")
+            click.echo("\n请配置 Telegram API 凭据：")
+            click.echo("1. 使用 'tg-signer bot init' 命令初始化配置")
+            click.echo("2. 或设置环境变量: export TG_API_ID='...' 和 export TG_API_HASH='...'")
+            click.echo("3. 或在 .env 文件中配置 TG_API_ID 和 TG_API_HASH")
+        else:
+            click.echo(f"运行机器人失败: {e}")
         logger.error(f"Failed to run bot: {e}", exc_info=True)
         raise click.Abort()
 
@@ -148,7 +155,10 @@ def config_bot(obj, config_name: str):
     
     # Xiaozhi AI
     click.echo("\n--- 小智AI配置 ---")
-    xiaozhi_enabled = click.confirm("启用小智AI？", default=False)
+    click.echo("说明：此处配置授权用户，实际启用由运行时 --ai 标志控制")
+    click.echo("     不使用 --ai：仅用于活动问答（如天机考验）")
+    click.echo("     使用 --ai：额外启用聊天消息AI互动")
+    xiaozhi_enabled = click.confirm("是否配置授权用户？", default=False)
     authorized_users = []
     if xiaozhi_enabled:
         user_input = click.prompt(
@@ -202,7 +212,11 @@ def config_bot(obj, config_name: str):
     
     click.echo(f"\n配置已保存到: {config_file}")
     click.echo(f"\n使用以下命令运行机器人:")
-    click.echo(f"  tg-signer bot run {config_name} --ai")
+    click.echo(f"  # 不启用AI聊天互动（仅活动问答）：")
+    click.echo(f"  tg-signer -a <账号名> bot run {config_name}")
+    click.echo(f"\n  # 启用AI聊天互动：")
+    click.echo(f"  tg-signer -a <账号名> bot run {config_name} --ai")
+    click.echo(f"\n注意：-a 是全局选项，必须放在 bot 之前！")
 
 
 @bot_cli.command(name="init", help="智能初始化tg-signer配置（包含小智AI配置）")
@@ -336,15 +350,21 @@ def init_bot(obj):
     click.echo("初始化完成! 下一步:")
     click.echo("="*60)
     click.echo("1. 登录 Telegram 账号:")
-    click.echo(f"   tg-signer -a 账号名 login")
+    click.echo(f"   tg-signer -a <账号名> login")
     click.echo()
     click.echo("2. 创建机器人配置:")
-    click.echo(f"   tg-signer bot config 我的机器人")
+    click.echo(f"   tg-signer bot config <配置名>")
     click.echo()
     click.echo("3. 运行机器人:")
-    click.echo(f"   tg-signer -a 账号名 bot run 我的机器人 --ai")
+    click.echo(f"   tg-signer -a <账号名> bot run <配置名>")
     click.echo()
-    click.echo("注意: --ai 标志控制是否启用小智AI聊天互动")
+    click.echo("   或启用AI聊天互动:")
+    click.echo(f"   tg-signer -a <账号名> bot run <配置名> --ai")
+    click.echo()
+    click.echo("注意：")
+    click.echo("  - -a 是全局选项，必须放在 bot 之前")
+    click.echo("  - --ai 标志控制是否启用小智AI聊天互动")
+    click.echo("  - 不使用 --ai 时，仍会初始化小智用于活动问答")
     click.echo("="*60 + "\n")
 
 
