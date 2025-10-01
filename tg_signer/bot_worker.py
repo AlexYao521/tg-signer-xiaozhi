@@ -329,22 +329,38 @@ class ChannelBot:
     async def _on_message(self, client: Client, message: Message):
         """Handle incoming messages"""
         try:
-            # Filter messages: Only process messages from the channel bot or activity bot
-            # Skip messages from regular users unless it's a reply to our message
-            if message.from_user and not message.from_user.is_bot:
-                # For non-bot messages, only process if they mention us (for activities)
-                # This prevents parsing commands/responses from other regular users
-                has_mention = False
-                if message.entities:
-                    for entity in message.entities:
-                        if entity.type.name == "MENTION" or entity.type.name == "TEXT_MENTION":
-                            has_mention = True
-                            break
-                
-                if not has_mention:
-                    # Not a bot message and doesn't mention us, skip
-                    logger.debug(f"Skipping message from non-bot user without mention: {message.from_user.id}")
-                    return
+            # Filter messages based on sender type
+            # We want to process:
+            # 1. Messages from bots (for command responses from channel bot)
+            # 2. Messages that mention us (for activities/interactions)
+            # Skip regular user messages that don't mention us
+            
+            should_process = False
+            
+            if message.from_user:
+                is_bot = getattr(message.from_user, 'is_bot', False)
+                if is_bot:
+                    # Process all bot messages (command responses)
+                    should_process = True
+                else:
+                    # For non-bot messages, check if it mentions us
+                    has_mention = False
+                    if message.entities:
+                        for entity in message.entities:
+                            entity_type = getattr(entity.type, 'name', str(entity.type))
+                            if entity_type in ("MENTION", "TEXT_MENTION"):
+                                has_mention = True
+                                break
+                    
+                    if has_mention:
+                        should_process = True
+            else:
+                # Messages without from_user (channel posts) - process them
+                should_process = True
+            
+            if not should_process:
+                logger.debug(f"Skipping message from user {getattr(message.from_user, 'id', 'unknown')} (not bot, no mention)")
+                return
             
             handled = False
 
