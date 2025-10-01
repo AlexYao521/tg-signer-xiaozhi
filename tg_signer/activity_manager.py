@@ -86,17 +86,7 @@ class ActivityManager:
             priority=0
         ))
         
-        # 第五种：洞府访客 - 只匹配指令
-        patterns.append(ActivityPattern(
-            name="洞府访客_查看",
-            patterns=[
-                r"\.查看访客"
-            ],
-            response_type="reply_command",
-            response_value=".查看访客",
-            priority=0
-        ))
-        
+        # 第五种：洞府访客 - 只匹配指令（接待要在查看前面，避免误匹配）
         patterns.append(ActivityPattern(
             name="洞府访客_接待",
             patterns=[
@@ -105,6 +95,16 @@ class ActivityManager:
             ],
             response_type="reply_command",
             response_value=".接待访客",
+            priority=0
+        ))
+        
+        patterns.append(ActivityPattern(
+            name="洞府访客_查看",
+            patterns=[
+                r"\.查看访客"
+            ],
+            response_type="reply_command",
+            response_value=".查看访客",
             priority=0
         ))
         
@@ -134,12 +134,14 @@ class ActivityManager:
                 # 只需要匹配 .作答 即可
                 if ".作答" in text:
                     match_count = 1
-            elif pattern.name in ["洞府访客_查看", "洞府访客_接待"]:
-                # 直接匹配指令关键词
-                for keyword in [".查看访客", ".接待访客", ".驱逐访客"]:
-                    if keyword in text:
-                        match_count = 1
-                        break
+            elif pattern.name == "洞府访客_接待":
+                # 优先匹配接待或驱逐（比查看更具体）
+                if ".接待访客" in text or ".驱逐访客" in text:
+                    match_count = 1
+            elif pattern.name == "洞府访客_查看":
+                # 只匹配查看访客
+                if ".查看访客" in text:
+                    match_count = 1
             else:
                 # 其他活动使用正则匹配
                 for regex in pattern.patterns:
@@ -235,23 +237,24 @@ class ActivityManager:
         Returns:
             答案文本
         """
+        # 对于天机考验指令题，直接提取指令，不需要AI客户端
+        if pattern.name == "天机考验_指令题" and pattern.response_value == "command":
+            import re
+            cmd_match = re.search(r'使用(\.[\u4e00-\u9fa5]+)指令', text)
+            if cmd_match:
+                command = cmd_match.group(1)
+                logger.info(f"[活动] 提取到指令: {command}")
+                return command
+            else:
+                logger.warning("[活动] 无法提取指令")
+                return ".我的宗门"
+        
+        # 其他情况需要AI客户端
         if not self.xiaozhi_client:
             logger.warning("[活动] 未配置小智AI客户端")
             return None
         
         try:
-            # 对于天机考验指令题，需要提取指令
-            if pattern.name == "天机考验_指令题" and pattern.response_value == "command":
-                import re
-                cmd_match = re.search(r'使用(\.[\u4e00-\u9fa5]+)指令', text)
-                if cmd_match:
-                    command = cmd_match.group(1)
-                    logger.info(f"[活动] 提取到指令: {command}")
-                    return command
-                else:
-                    logger.warning("[活动] 无法提取指令")
-                    return ".我的宗门"
-            
             # 使用 ai_tools 获取答案
             from .ai_tools import calculate_problem
             
