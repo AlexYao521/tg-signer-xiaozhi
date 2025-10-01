@@ -9,6 +9,14 @@
 - 调用AI进行图片识别并点击键盘
 - 个人、群组、频道消息监控、转发与自动回复
 - 根据配置执行动作流
+- **新增：频道自动化机器人** (Channel Automation Bot)
+  - 每日例行任务自动化（点卯、传功、问安）
+  - 周期任务自动化（启阵、助阵、问道、引道、元婴、裂缝探索）
+  - 观星台自动化（观星、牵引、收集、安抚）
+  - 小药园自动化（扫描、维护、采药、播种）
+  - 小智AI集成（WebSocket/MQTT双通道支持）
+  - 灵活的指令-响应配置（JSON可扩展）
+  - 交互式CLI命令引导
 
   **...**
 
@@ -444,10 +452,211 @@ tg-signer monitor run my_monitor
 ├── monitors  # 监控
 │   ├── my_monitor  # 监控任务名
 │       └── config.json  # 监控配置
-└── signs  # 签到任务
-    └── linuxdo  # 签到任务名
-        ├── config.json  # 签到配置
-        └── sign_record.json  # 签到记录
+├── signs  # 签到任务
+│   └── linuxdo  # 签到任务名
+│       ├── config.json  # 签到配置
+│       └── sign_record.json  # 签到记录
+└── bot_configs  # 机器人配置 (新增)
+    └── my_bot  # 机器人任务名
+        └── config.json  # 机器人配置
 
 3 directories, 4 files
+```
+
+### 频道自动化机器人使用说明
+
+频道自动化机器人是一个功能强大的自动化工具，基于 [ARCHITECTURE.md](./ARCHITECTURE.md) 设计，支持多种自动化任务。
+
+#### 快速开始
+
+1. **登录账号**（如果还没有登录）
+
+```bash
+tg-signer login
+```
+
+2. **配置机器人**（交互式配置）
+
+```bash
+tg-signer bot config my_bot
+```
+
+这将启动交互式配置向导，引导你完成：
+- 频道ID配置
+- 每日任务配置（点卯、传功、问安）
+- 周期任务配置（启阵、助阵、问道、引道、元婴、裂缝探索）
+- 观星台配置
+- 小药园配置
+- 小智AI配置
+
+3. **配置小智AI**（可选）
+
+创建 `config.json` 文件（已提供示例）：
+
+```json
+{
+  "SYSTEM_OPTIONS": {
+    "NETWORK": {
+      "WEBSOCKET_URL": "wss://api.tenclass.net/xiaozhi/v1/",
+      "WEBSOCKET_ACCESS_TOKEN": "test-token"
+    }
+  },
+  "TG_SIGNER": {
+    "XIAOZHI_AI": {
+      "enabled": true,
+      "protocol_type": "websocket",
+      "auto_reconnect": true,
+      "max_reconnect_attempts": 5,
+      "connect_timeout": 10
+    }
+  }
+}
+```
+
+4. **运行机器人**
+
+```bash
+tg-signer bot run my_bot
+```
+
+如果需要指定小智AI配置文件：
+
+```bash
+tg-signer bot run my_bot --xiaozhi-config /path/to/config.json
+```
+
+#### 机器人管理命令
+
+```bash
+# 列出所有机器人配置
+tg-signer bot list
+
+# 导出机器人配置
+tg-signer bot export my_bot -o my_bot_config.json
+
+# 导入机器人配置
+tg-signer bot import my_bot -i my_bot_config.json
+
+# 检查机器人环境和配置
+tg-signer bot doctor
+tg-signer bot doctor my_bot
+```
+
+#### 配置文件结构
+
+机器人配置文件示例（参考 `example_bot_config.json`）：
+
+```json
+{
+  "chat_id": -1001234567890,
+  "name": "仙门频道",
+  "daily": {
+    "enable_sign_in": true,
+    "enable_transmission": true,
+    "enable_greeting": false
+  },
+  "periodic": {
+    "enable_qizhen": true,
+    "enable_zhuzhen": true,
+    "enable_wendao": true,
+    "enable_yindao": true,
+    "enable_yuanying": true,
+    "enable_rift_explore": true
+  },
+  "star_observation": {
+    "enabled": true,
+    "default_star": "天雷星",
+    "plate_count": 5,
+    "sequence": ["天雷星", "烈阳星", "玄冰星"]
+  },
+  "xiaozhi_ai": {
+    "authorized_users": [123456789],
+    "filter_keywords": ["广告", "刷屏"],
+    "blacklist_users": [],
+    "trigger_keywords": ["@小智", "小智AI", "xiaozhi"],
+    "response_prefix": "小智AI回复: "
+  },
+  "custom_rules": [
+    {
+      "pattern": "测试.*",
+      "response": "这是自动回复",
+      "cooldown_seconds": 300,
+      "priority": 5,
+      "enabled": true
+    }
+  ]
+}
+```
+
+#### 灵活的指令-响应配置
+
+通过 `custom_rules` 字段，你可以灵活配置指令-响应规则，无需修改代码：
+
+```json
+{
+  "custom_rules": [
+    {
+      "pattern": "问候.*",
+      "response": "你好！",
+      "cooldown_seconds": 60,
+      "priority": 5,
+      "enabled": true
+    },
+    {
+      "pattern": "帮助",
+      "response": "这是帮助信息...",
+      "cooldown_seconds": 300,
+      "priority": 3,
+      "enabled": true
+    }
+  ]
+}
+```
+
+#### 功能特性
+
+- ✅ **账号登录缓存管理**：沿用 tg-signer 体系，无需改动
+- ✅ **小智AI集成**：简单移植自 [py-xiaozhi](https://github.com/AlexYao521/py-xiaozhi)
+- ✅ **配置兼容**：直接使用 `config.json` 和 `efuse.json`
+- ✅ **功能开关**：所有功能可通过配置开关控制
+- ✅ **灵活扩展**：指令-响应可通过JSON灵活配置
+- ✅ **交互式CLI**：命令行交互引导，简单易用
+- ✅ **状态持久化**：自动保存任务状态，支持断点续传
+- ✅ **优先级队列**：智能调度，重要任务优先执行
+- ✅ **去重机制**：防止重复执行相同任务
+
+#### 架构设计
+
+详细架构设计请参考 [ARCHITECTURE.md](./ARCHITECTURE.md)，包含：
+- 模块划分与职责
+- 配置体系设计
+- 状态文件与数据结构
+- 并发调度模型
+- 指令与响应规范
+
+#### 注意事项
+
+1. 确保设置了环境变量 `TG_API_ID` 和 `TG_API_HASH`
+2. 小智AI的 `WEBSOCKET_ACCESS_TOKEN` 配置已验证可用，可直接使用
+3. 首次使用需要先登录账号：`tg-signer login`
+4. 建议先使用 `doctor` 命令检查环境
+5. 配置文件中的频道ID为负数，记得在命令行中使用 `--` 分隔符
+
+#### 故障排查
+
+如果遇到问题，可以：
+
+1. 检查环境和配置：
+```bash
+tg-signer bot doctor my_bot
+```
+
+2. 查看日志文件：
+```bash
+tail -f tg-signer.log
+```
+
+3. 使用调试模式：
+```bash
+tg-signer --log-level debug bot run my_bot
 ```
