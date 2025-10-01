@@ -123,12 +123,16 @@ class ChannelBot:
         workdir: str = ".bot",
         session_string: str = None,
         in_memory: bool = False,
-        xiaozhi_config_path: str = "config.json"
+        config_manager = None
     ):
         self.config = config
         self.account = account
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
+        
+        # Store config manager
+        from tg_signer.config_manager import get_config_manager
+        self.config_manager = config_manager or get_config_manager()
         
         # Initialize state store
         self.state_store = StateStore(str(self.workdir / "states"))
@@ -144,7 +148,7 @@ class ChannelBot:
         # Initialize Xiaozhi AI client
         self.xiaozhi_client = None
         if config.xiaozhi_ai.authorized_users:
-            self.xiaozhi_client = self._load_xiaozhi_client(xiaozhi_config_path)
+            self.xiaozhi_client = self._load_xiaozhi_client()
         
         # Runtime state
         self._running = False
@@ -156,11 +160,13 @@ class ChannelBot:
         session_string: str, in_memory: bool
     ) -> Client:
         """Create Telegram client (reusing tg-signer infrastructure)"""
-        api_id = os.getenv("TG_API_ID")
-        api_hash = os.getenv("TG_API_HASH")
+        # Get credentials from config manager
+        api_id, api_hash = self.config_manager.get_telegram_credentials()
         
         if not api_id or not api_hash:
-            raise ValueError("TG_API_ID and TG_API_HASH must be set")
+            raise ValueError(
+                "TG_API_ID and TG_API_HASH must be set in environment or config/app_config.json"
+            )
         
         return Client(
             name=account,
@@ -172,15 +178,14 @@ class ChannelBot:
             in_memory=in_memory
         )
     
-    def _load_xiaozhi_client(self, config_path: str) -> Optional[XiaozhiClient]:
-        """Load Xiaozhi AI client from config"""
-        if not Path(config_path).exists():
-            logger.warning(f"Xiaozhi config not found: {config_path}")
-            return None
-        
+    def _load_xiaozhi_client(self) -> Optional[XiaozhiClient]:
+        """Load Xiaozhi AI client from config manager"""
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                xiaozhi_config = json.load(f)
+            xiaozhi_config = self.config_manager.get_xiaozhi_config()
+            if not xiaozhi_config:
+                logger.warning("Xiaozhi config not found")
+                return None
+            
             return create_xiaozhi_client(xiaozhi_config)
         except Exception as e:
             logger.error(f"Failed to load Xiaozhi client: {e}")
