@@ -26,12 +26,18 @@ def bot_cli():
 @click.option(
     "--xiaozhi-config",
     "-x",
-    default="config.json",
-    help="小智AI配置文件路径",
-    type=click.Path(exists=True)
+    default=None,
+    help="小智AI配置文件路径（默认: config/config.json）",
+    type=click.Path()
+)
+@click.option(
+    "--ai",
+    is_flag=True,
+    default=False,
+    help="启用小智AI聊天互动（不影响小智客户端初始化，只控制聊天消息AI互动）"
 )
 @click.pass_obj
-def run_bot(obj, config_name: str, xiaozhi_config: str):
+def run_bot(obj, config_name: str, xiaozhi_config: Optional[str], ai: bool):
     """Run channel automation bot"""
     workdir = Path(obj["workdir"])
     config_file = workdir / "bot_configs" / f"{config_name}.json"
@@ -47,6 +53,26 @@ def run_bot(obj, config_name: str, xiaozhi_config: str):
             config_data = json.load(f)
         bot_config = BotConfig(**config_data)
         
+        # Override AI settings if --ai flag is provided
+        if ai:
+            # Enable AI chat interaction
+            if not bot_config.xiaozhi_ai.authorized_users:
+                click.echo("警告: --ai 标志已设置，但配置中未指定授权用户")
+        else:
+            # Disable AI chat interaction (but still initialize xiaozhi client for activity responses)
+            bot_config.xiaozhi_ai.trigger_keywords = []
+        
+        # Determine xiaozhi config path
+        if xiaozhi_config is None:
+            # Try config folder first
+            config_dir = workdir / "config"
+            if (config_dir / "config.json").exists():
+                xiaozhi_config = str(config_dir / "config.json")
+            elif Path("config.json").exists():
+                xiaozhi_config = "config.json"
+            else:
+                xiaozhi_config = str(config_dir / "config.json")  # Default, may not exist
+        
         # Create and run bot
         bot = ChannelBot(
             config=bot_config,
@@ -59,7 +85,9 @@ def run_bot(obj, config_name: str, xiaozhi_config: str):
             xiaozhi_config_path=xiaozhi_config
         )
         
+        ai_status = "启用" if ai and bot_config.xiaozhi_ai.authorized_users else "禁用"
         click.echo(f"启动机器人: {config_name} (频道: {bot_config.chat_id})")
+        click.echo(f"小智AI聊天互动: {ai_status}")
         
         # Run bot
         loop = asyncio.get_event_loop()
@@ -174,7 +202,152 @@ def config_bot(obj, config_name: str):
     
     click.echo(f"\n配置已保存到: {config_file}")
     click.echo(f"\n使用以下命令运行机器人:")
-    click.echo(f"  tg-signer bot run {config_name}")
+    click.echo(f"  tg-signer bot run {config_name} --ai")
+
+
+@bot_cli.command(name="init", help="智能初始化tg-signer配置（包含小智AI配置）")
+@click.pass_obj
+def init_bot(obj):
+    """Initialize tg-signer configuration intelligently"""
+    import os
+    import shutil
+    
+    workdir = Path(obj["workdir"])
+    click.echo(f"\n=== tg-signer 智能配置初始化 ===\n")
+    click.echo(f"工作目录: {workdir}\n")
+    
+    # 1. Create directory structure
+    click.echo("1. 创建目录结构...")
+    config_dir = workdir / "config"
+    bot_configs_dir = workdir / "bot_configs"
+    bot_workdir = workdir / "bot_workdir"
+    
+    config_dir.mkdir(parents=True, exist_ok=True)
+    bot_configs_dir.mkdir(parents=True, exist_ok=True)
+    bot_workdir.mkdir(parents=True, exist_ok=True)
+    click.echo(f"   ✓ 已创建: {config_dir}")
+    click.echo(f"   ✓ 已创建: {bot_configs_dir}")
+    click.echo(f"   ✓ 已创建: {bot_workdir}")
+    
+    # 2. Move config.json and efuse.json to config folder
+    click.echo("\n2. 迁移配置文件到 config 文件夹...")
+    for filename in ["config.json", "efuse.json"]:
+        src = Path(filename)
+        dst = config_dir / filename
+        
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+            click.echo(f"   ✓ 已复制: {filename} -> {dst}")
+        elif dst.exists():
+            click.echo(f"   - 已存在: {dst}")
+        else:
+            click.echo(f"   ! 未找到: {filename}")
+    
+    # 3. Check/Create default Telegram API credentials
+    click.echo("\n3. 配置 Telegram API 凭据...")
+    env_file = workdir / ".env"
+    
+    api_id = os.getenv("TG_API_ID")
+    api_hash = os.getenv("TG_API_HASH")
+    
+    if not api_id or not api_hash:
+        click.echo("   未检测到 TG_API_ID 和 TG_API_HASH 环境变量")
+        if click.confirm("   是否配置 Telegram API 凭据？"):
+            api_id = click.prompt("   请输入 TG_API_ID", type=str)
+            api_hash = click.prompt("   请输入 TG_API_HASH", type=str)
+            
+            # Save to .env file
+            with open(env_file, 'w') as f:
+                f.write(f"export TG_API_ID=\"{api_id}\"\n")
+                f.write(f"export TG_API_HASH=\"{api_hash}\"\n")
+            
+            click.echo(f"   ✓ 已保存到: {env_file}")
+            click.echo(f"   请运行: source {env_file}")
+    else:
+        click.echo(f"   ✓ 已配置: TG_API_ID={api_id}")
+    
+    # 4. Check/Configure proxy
+    click.echo("\n4. 配置代理...")
+    proxy = obj.get("proxy") or os.getenv("TG_PROXY")
+    
+    if not proxy:
+        if click.confirm("   是否配置代理？"):
+            proxy = click.prompt("   代理地址", default="socks5://127.0.0.1:7897")
+            
+            # Append to .env file
+            with open(env_file, 'a') as f:
+                f.write(f"export TG_PROXY=\"{proxy}\"\n")
+            
+            click.echo(f"   ✓ 已保存代理设置到: {env_file}")
+    else:
+        click.echo(f"   ✓ 已配置代理: {proxy}")
+    
+    # 5. Create example bot configuration
+    click.echo("\n5. 创建示例机器人配置...")
+    example_config = bot_configs_dir / "example.json"
+    
+    if not example_config.exists():
+        example_data = {
+            "chat_id": -1001234567890,
+            "name": "示例频道",
+            "daily": {
+                "enable_sign_in": True,
+                "enable_transmission": True,
+                "enable_greeting": False
+            },
+            "periodic": {
+                "enable_qizhen": True,
+                "enable_zhuzhen": True,
+                "enable_wendao": True,
+                "enable_yindao": True,
+                "enable_yuanying": True,
+                "enable_rift_explore": True
+            },
+            "star_observation": {
+                "enabled": True,
+                "default_star": "天雷星",
+                "plate_count": 5,
+                "sequence": ["天雷星", "烈阳星", "玄冰星"]
+            },
+            "herb_garden": {
+                "enabled": False
+            },
+            "xiaozhi_ai": {
+                "authorized_users": [],
+                "filter_keywords": [],
+                "blacklist_users": [],
+                "debug": False
+            },
+            "activity": {
+                "enabled": True,
+                "rules_extra": []
+            }
+        }
+        
+        with open(example_config, 'w', encoding='utf-8') as f:
+            json.dump(example_data, f, indent=2, ensure_ascii=False)
+        
+        click.echo(f"   ✓ 已创建示例配置: {example_config}")
+    else:
+        click.echo(f"   - 示例配置已存在: {example_config}")
+    
+    # Summary
+    click.echo("\n" + "="*60)
+    click.echo("初始化完成! 下一步:")
+    click.echo("="*60)
+    click.echo("1. 登录 Telegram 账号:")
+    click.echo(f"   tg-signer -a 账号名 login")
+    click.echo()
+    click.echo("2. 创建机器人配置:")
+    click.echo(f"   tg-signer bot config 我的机器人")
+    click.echo()
+    click.echo("3. 运行机器人:")
+    click.echo(f"   tg-signer -a 账号名 bot run 我的机器人 --ai")
+    click.echo()
+    click.echo("注意: --ai 标志控制是否启用小智AI聊天互动")
+    click.echo("="*60 + "\n")
+
+
 
 
 @bot_cli.command(name="list", help="列出所有机器人配置")

@@ -55,11 +55,20 @@ class StarObservation:
     3. 牵引星辰按序列轮转
     """
     
-    def __init__(self, chat_id: int, account: str, star_sequence: List[str] = None):
+    def __init__(self, config, state_store, command_queue, chat_id: int, account: str):
+        self.config = config.star_observation
+        self.state_store = state_store
+        self.command_queue = command_queue
         self.chat_id = chat_id
         self.account = account
-        self.star_sequence = star_sequence or ["天雷星", "赤血星", "庚金星"]
+        self.state_key = f"acct_{account}_chat_{chat_id}_star"
+        
+        self.star_sequence = self.config.sequence if hasattr(self.config, 'sequence') else ["天雷星", "赤血星", "庚金星"]
         self.state = StarObservationState()
+        
+        # Load state
+        state_data = state_store.load("star_state.json")
+        self.load_state(state_data.get(self.state_key, {}))
     
     def load_state(self, state_data: Dict[str, Any]):
         """从持久化数据加载状态"""
@@ -283,3 +292,95 @@ class StarObservation:
             return cooldown
         
         return None
+    
+    async def start(self):
+        """启动星宫模块"""
+        if not self.config.enabled:
+            logger.info("[星宫] 观星台功能已禁用")
+            return
+        
+        logger.info("[星宫] 启动观星台模块")
+        
+        # 首先执行安抚星辰
+        await self.command_queue.enqueue(
+            ".安抚星辰",
+            priority=2,
+            dedupe_key=f"star:pacify:{self.chat_id}"
+        )
+        
+        # 然后扫描观星台
+        await self.command_queue.enqueue(
+            ".观星台",
+            when=time.time() + 3,
+            priority=2,
+            dedupe_key=f"star:scan:{self.chat_id}"
+        )
+    
+    async def handle_message(self, message) -> bool:
+        """处理消息"""
+        if not message.text:
+            return False
+        
+        text = message.text
+        
+        # 检查是否是观星台响应
+        if "观星台" in text or "引星盘" in text:
+            # 解析状态
+            commands = self.parse_observation_status(text)
+            self._save_state()
+            
+            # 调度收集/牵引任务
+            for command, priority, delay in commands:
+                await self.command_queue.enqueue(
+                    command,
+                    when=time.time() + delay,
+                    priority=priority,
+                    dedupe_key=f"star:{command}:{self.chat_id}"
+                )
+            
+            return True
+        
+        # 检查安抚星辰响应
+        if "安抚星辰" in text:
+            self.state.last_pacify_ts = time.time()
+            self._save_state()
+            logger.info("[星宫] 安抚星辰完成")
+            return True
+        
+        # 检查收集精华响应
+        if "收集精华" in text or "收集成功" in text:
+            next_action = self.parse_collect_response(text)
+            if next_action == "schedule_scan":
+                # 重新扫描观星台
+                import random
+                await self.command_queue.enqueue(
+                    ".观星台",
+                    when=time.time() + random.randint(3, 6),
+                    priority=2,
+                    dedupe_key=f"star:scan:{self.chat_id}"
+                )
+            return True
+        
+        # 检查牵引星辰响应
+        if "牵引" in text:
+            # 简单解析（需要从之前的命令中获取星辰名）
+            self._save_state()
+            return True
+        
+        return False
+    
+    def _save_state(self):
+        """保存状态到持久化存储"""
+        state_data = self.state_store.load("star_state.json")
+        state_data[self.state_key] = self.save_state()
+        self.state_store.save("star_state.json", state_data)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """获取状态"""
+        return {
+            "plates_count": len(self.state.plates),
+            "ready_count": sum(1 for p in self.state.plates if p.state == StarState.READY),
+            "idle_count": sum(1 for p in self.state.plates if p.state == StarState.IDLE),
+            "last_pacify_ts": self.state.last_pacify_ts,
+            "sequence_index": self.state.sequence_index,
+        }
