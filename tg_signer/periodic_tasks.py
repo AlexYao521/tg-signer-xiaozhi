@@ -176,6 +176,8 @@ class PeriodicTasks:
         if not text or task_name not in self.state.cooldowns:
             return None
         
+        logger.debug(f"[周期] 解析{task_name}响应: {text[:100]}")
+        
         cd = self.state.cooldowns[task_name]
         
         # 检查成功标识
@@ -207,11 +209,15 @@ class PeriodicTasks:
         
         # 更新状态
         now = time.time()
+        old_next_ts = cd.next_execute_ts
         cd.last_execute_ts = now
         cd.cooldown_seconds = cooldown
         cd.next_execute_ts = now + cooldown
         
-        logger.info(f"[周期] {task_name}执行成功，冷却{cooldown}秒")
+        if old_next_ts == cd.next_execute_ts:
+            logger.debug(f"[周期] {task_name}状态未变化，忽略重复响应")
+        else:
+            logger.info(f"[周期] {task_name}执行成功，冷却{cooldown}秒 (下次执行: {cd.next_execute_ts})")
         
         # 对于探寻裂缝，如果失败（风暴/受创），安排预热
         if task_name == "探寻裂缝" and ("风暴" in text or "受创" in text):
@@ -265,6 +271,8 @@ class PeriodicTasks:
         # 尝试匹配任务响应
         for task_name in self.TASKS.keys():
             if any(kw in text for kw in [task_name, self.TASKS[task_name]]):
+                logger.debug(f"[周期] 收到{task_name}相关消息: {text[:50]}...")
+                
                 cooldown = self.parse_response(text, task_name)
                 if cooldown is not None:
                     # 保存状态
@@ -272,12 +280,15 @@ class PeriodicTasks:
                     
                     # 如果冷却时间很短，立即调度下一次执行
                     if cooldown < 3600:  # 小于1小时
+                        logger.info(f"[周期] 计划{cooldown + 5}秒后执行{task_name}")
                         await self.command_queue.enqueue(
                             self.TASKS[task_name],
                             when=time.time() + cooldown + 5,  # 加5秒缓冲
                             priority=1,
                             dedupe_key=f"periodic:{self.TASKS[task_name]}:{self.chat_id}"
                         )
+                    else:
+                        logger.info(f"[周期] {task_name}冷却时间较长({cooldown}秒)，不自动调度")
                     
                     return True
         

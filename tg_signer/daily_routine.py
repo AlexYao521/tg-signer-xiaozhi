@@ -110,28 +110,42 @@ class DailyRoutine:
         if not text:
             return None
         
+        logger.debug(f"[每日] 解析响应: {text[:100]}")
+        
         # 解析点卯响应
         if "点卯成功" in text:
-            self.state.signin_done = True
-            self.state.last_signin_ts = time.time()
-            logger.info("[每日] 点卯成功")
+            if not self.state.signin_done:
+                self.state.signin_done = True
+                self.state.last_signin_ts = time.time()
+                logger.info("[每日] 点卯成功")
+            else:
+                logger.debug("[每日] 点卯已完成，忽略重复响应")
             return None
         
         if "今日已点卯" in text:
-            self.state.signin_done = True
-            logger.info("[每日] 今日已点卯")
+            if not self.state.signin_done:
+                self.state.signin_done = True
+                logger.info("[每日] 今日已点卯")
+            else:
+                logger.debug("[每日] 点卯已完成，忽略重复响应")
             return None
         
         # 解析问安响应
         if "情缘增加" in text or "问安成功" in text:
-            self.state.greeting_done = True
-            self.state.last_greeting_ts = time.time()
-            logger.info("[每日] 问安成功")
+            if not self.state.greeting_done:
+                self.state.greeting_done = True
+                self.state.last_greeting_ts = time.time()
+                logger.info("[每日] 问安成功")
+            else:
+                logger.debug("[每日] 问安已完成，忽略重复响应")
             return None
         
         if "今日已经问安" in text or "已问安" in text:
-            self.state.greeting_done = True
-            logger.info("[每日] 今日已问安")
+            if not self.state.greeting_done:
+                self.state.greeting_done = True
+                logger.info("[每日] 今日已问安")
+            else:
+                logger.debug("[每日] 问安已完成，忽略重复响应")
             return None
         
         # 解析传功响应
@@ -141,20 +155,29 @@ class DailyRoutine:
             match = re.search(r'传功\s*(\d+)/3', text)
             if match:
                 count = int(match.group(1))
+                old_count = self.state.transmission_count
                 self.state.transmission_count = count
                 self.state.last_transmission_ts = time.time()
-                logger.info(f"[每日] 传功进度: {count}/3")
+                
+                if count != old_count:
+                    logger.info(f"[每日] 传功进度: {count}/3")
+                else:
+                    logger.debug(f"[每日] 传功进度未变化: {count}/3")
                 
                 if count < 3:
                     # 还可以继续传功，30-45秒后再次尝试
+                    logger.info(f"[每日] 计划下次传功 (当前{count}/3)")
                     return "schedule_transmission"
                 else:
                     logger.info("[每日] 今日传功已完成 3/3")
                     return None
         
         if "请明日再来" in text:
-            self.state.transmission_count = 3
-            logger.info("[每日] 传功已达上限")
+            if self.state.transmission_count < 3:
+                self.state.transmission_count = 3
+                logger.info("[每日] 传功已达上限")
+            else:
+                logger.debug("[每日] 传功已达上限（重复消息）")
             return None
         
         if "需回复" in text or "请回复" in text:
@@ -215,6 +238,12 @@ class DailyRoutine:
         
         text = message.text
         
+        # 只处理包含关键词的消息
+        if not any(keyword in text for keyword in ["点卯", "问安", "传功"]):
+            return False
+        
+        logger.debug(f"[每日] 收到消息: {text[:50]}...")
+        
         # 解析响应并更新状态
         next_action = self.parse_response(text)
         
@@ -226,6 +255,7 @@ class DailyRoutine:
                 # 继续调度传功任务
                 import random
                 delay = random.randint(30, 45)
+                logger.info(f"[每日] 计划{delay}秒后继续传功")
                 await self.command_queue.enqueue(
                     ".宗门传功",
                     when=time.time() + delay,
@@ -235,12 +265,9 @@ class DailyRoutine:
             
             return True
         
-        # 检查是否是点卯、问安或传功的响应
-        if any(keyword in text for keyword in ["点卯", "问安", "传功"]):
-            self._save_state()
-            return True
-        
-        return False
+        # 任何包含关键词的消息都要保存状态
+        self._save_state()
+        return True
     
     def _save_state(self):
         """保存状态到持久化存储"""
