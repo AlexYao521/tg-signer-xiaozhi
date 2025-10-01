@@ -353,12 +353,12 @@ class HerbGarden:
         
         # 检查是否是小药园响应
         if "灵田" in text or "小药园" in text:
-            # 解析状态
-            self.parse_garden_status(text)
+            # 解析状态并获取指令
+            commands = self.parse_scan_response(text)
             self._save_state()
             
             # 调度维护/采药任务
-            for command, priority, delay in self.get_maintenance_and_harvest_commands():
+            for command, priority, delay in commands:
                 await self.command_queue.enqueue(
                     command,
                     when=time.time() + delay,

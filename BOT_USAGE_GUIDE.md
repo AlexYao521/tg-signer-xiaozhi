@@ -496,6 +496,45 @@ tg-signer -a account2 bot run channel3 --ai
 
 A: 是的，配置文件的更改需要重启机器人才能生效。按 `Ctrl+C` 停止后重新运行即可。
 
+### Q: 出现 SLOWMODE_WAIT_X 错误怎么办？
+
+A: 这是 Telegram 的慢速模式限制，属于正常现象。当频道启用慢速模式时，两次发送消息之间必须等待指定秒数。
+
+**错误示例：**
+```
+ERROR | Failed to send command '.闭关修炼': Telegram says: [420 SLOWMODE_WAIT_X] - Slowmode is enabled in this chat: wait 9 seconds before sending another message to this chat.
+```
+
+**解决方法：**
+1. **调整配置**：在机器人配置中增加 `min_send_interval` 的值（单位：秒）
+   ```json
+   {
+     "min_send_interval": 10.0
+   }
+   ```
+2. **等待重试**：机器人会自动记录失败的命令，并在下一个周期重试
+3. **减少同时任务**：如果启用了太多周期任务，考虑禁用部分任务以减少发送频率
+4. **联系管理员**：如果可能，请求频道管理员调整或关闭慢速模式
+
+**注意**：慢速模式是 Telegram 平台限制，无法通过代码绕过。机器人已经做了最小发送间隔控制，但如果频道慢速模式设置的间隔更长，仍可能触发此错误。
+
+### Q: 如何查看每个账号的日志？
+
+A: 从版本 0.8.1 开始，支持按账号分别记录日志：
+
+```bash
+# 运行时会自动在 logs/<账号名>/ 目录下创建日志文件
+tg-signer -a my_account bot run my_channel
+
+# 查看账号专属日志
+tail -f logs/my_account/my_account.log
+
+# 或者使用 grep 过滤
+grep "ERROR" logs/my_account/my_account.log
+```
+
+日志文件会按账号分类存储，每个账号独立记录，方便分析和调试。
+
 ## 最佳实践
 
 1. **使用配置文件**: 尽量使用配置文件而不是环境变量，便于管理和备份
