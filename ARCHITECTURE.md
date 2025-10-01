@@ -1,6 +1,17 @@
-# 修仙机器人架构设计与开发规划 (v1.0)
+# 修仙机器人架构设计与开发规划 (v1.1)
 
 > 本文档用于指导项目从零到完善的系统化重构与增量迭代。目标：模块清晰、职责单一、易扩展、支持多账号多频道、具备自恢复与良好可 observability。
+
+> **🆕 更新说明 (v1.1)**: 
+> - 已完成模块化重构，创建了7个独立功能模块
+> - 新增详细的冷却规则文档和企业级改进建议
+> - 更新了实现状态，标注已完成的模块
+> 
+> **📚 相关文档**:
+> - [PROJECT_ARCHITECTURE.md](./PROJECT_ARCHITECTURE.md) - 完整的项目架构文档（推荐阅读）
+> - [COOLDOWN_RULES.md](./COOLDOWN_RULES.md) - 冷却规则详细说明
+> - [ENTERPRISE_TODO.md](./ENTERPRISE_TODO.md) - 企业级改进建议清单
+> - [活动回复词.md](./活动回复词.md) - 活动响应规范
 
 ---
 ## 目录
@@ -83,6 +94,27 @@
 ```
 
 ## 4. 模块划分与职责
+
+> **📊 实现状态 (Implementation Status)**
+> - ✅ **已完成**: 模块已实现并通过测试
+> - 🚧 **进行中**: 模块正在开发
+> - 📝 **计划中**: 待实现的模块
+> 
+> | 模块 | 状态 | 文件 | 说明 |
+> |-----|------|------|------|
+> | Core 调度与运行时 | 🚧 | `bot_worker.py` | 部分实现，需集成新模块 |
+> | DailyRoutine | ✅ | `daily_routine.py` | 已完成，154行 |
+> | PeriodicRoutine | ✅ | `periodic_tasks.py` | 已完成，175行 |
+> | StarObservation | ✅ | `star_observation.py` | 已完成，285行 |
+> | HerbGarden | ✅ | `herb_garden.py` | 已完成，329行 |
+> | ActivityManager | ✅ | `activity_manager.py` | 已完成，252行 |
+> | Cooldown Parser | ✅ | `cooldown_parser.py` | 已完成，124行，45个测试 |
+> | Cooldown Config | ✅ | `cooldown_config.py` | 已完成，118行 |
+> | Logging | ✅ | `logger.py` | 已增强，支持按账号分离 |
+> | Config Manager | ✅ | `bot_config.py` | 已存在 |
+> | State Persistence | ✅ | `bot_worker.py` | StateStore已实现 |
+> | AI Interaction | ✅ | `xiaozhi_client.py` | 已存在 |
+
 ### 4.1 Core 调度与运行时
 - 负责初始化、启动、停止、重连、自愈、任务队列主循环。
 - 提供通用：`enqueue_command`, 速率控制, 回调执行, 去重键策略。
