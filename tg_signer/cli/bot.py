@@ -152,6 +152,9 @@ def config_bot(obj, config_name: str):
     # Herb garden
     click.echo("\n--- 小药园配置 ---")
     herb_enabled = click.confirm("启用小药园自动化？", default=False)
+    default_seed = "凝血草种子"
+    if herb_enabled:
+        default_seed = click.prompt("默认种子", default="凝血草种子")
     
     # Xiaozhi AI
     click.echo("\n--- 小智AI配置 ---")
@@ -192,18 +195,40 @@ def config_bot(obj, config_name: str):
             "sequence": ["天雷星", "烈阳星", "玄冰星"]
         },
         "herb_garden": {
-            "enabled": herb_enabled
+            "enabled": herb_enabled,
+            "default_seed": default_seed,
+            "seeds": {
+                "凝血草种子": {
+                    "maturity_hours": 6,
+                    "exchange_batch": 5,
+                    "exchange_command": ".兑换 凝血草种子 {count}"
+                },
+                "清灵草种子": {
+                    "maturity_hours": 8,
+                    "exchange_batch": 5,
+                    "exchange_command": ".兑换 清灵草种子 {count}"
+                }
+            },
+            "scan_interval_min": 900,
+            "post_maintenance_rescan": 30,
+            "post_harvest_rescan": 20,
+            "seed_shortage_retry": 600
         },
         "xiaozhi_ai": {
             "authorized_users": authorized_users,
             "filter_keywords": [],
             "blacklist_users": [],
+            "trigger_keywords": ["@小智", "小智AI", "xiaozhi"],
+            "response_prefix": "小智AI回复: ",
             "debug": False
         },
         "activity": {
             "enabled": True,
             "rules_extra": []
-        }
+        },
+        "custom_rules": [],
+        "sign_interval": 10.0,
+        "min_send_interval": 1.0
     }
     
     # Save configuration
@@ -318,24 +343,46 @@ def init_bot(obj):
                 "enable_rift_explore": True
             },
             "star_observation": {
-                "enabled": True,
+                "enabled": False,
                 "default_star": "天雷星",
                 "plate_count": 5,
                 "sequence": ["天雷星", "烈阳星", "玄冰星"]
             },
             "herb_garden": {
-                "enabled": False
+                "enabled": False,
+                "default_seed": "凝血草种子",
+                "seeds": {
+                    "凝血草种子": {
+                        "maturity_hours": 6,
+                        "exchange_batch": 5,
+                        "exchange_command": ".兑换 凝血草种子 {count}"
+                    },
+                    "清灵草种子": {
+                        "maturity_hours": 8,
+                        "exchange_batch": 5,
+                        "exchange_command": ".兑换 清灵草种子 {count}"
+                    }
+                },
+                "scan_interval_min": 900,
+                "post_maintenance_rescan": 30,
+                "post_harvest_rescan": 20,
+                "seed_shortage_retry": 600
             },
             "xiaozhi_ai": {
                 "authorized_users": [],
                 "filter_keywords": [],
                 "blacklist_users": [],
+                "trigger_keywords": ["@小智", "小智AI", "xiaozhi"],
+                "response_prefix": "小智AI回复: ",
                 "debug": False
             },
             "activity": {
                 "enabled": True,
                 "rules_extra": []
-            }
+            },
+            "custom_rules": [],
+            "sign_interval": 10.0,
+            "min_send_interval": 1.0
         }
         
         with open(example_config, 'w', encoding='utf-8') as f:

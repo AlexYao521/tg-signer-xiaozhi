@@ -155,16 +155,22 @@ def tg_signer(
     
     from tg_signer.logger import configure_logger
 
-    logger = configure_logger(log_level, log_file)
-    ctx.ensure_object(dict)
-    proxy = get_proxy(proxy)
-    if ctx.invoked_subcommand in [
+    # Use per-account logging if account is specified
+    use_account_log = ctx.invoked_subcommand in [
         "login",
         "run",
         "run-once",
         "send-text",
         "logout",
-    ]:
+    ]
+    logger = configure_logger(
+        log_level, 
+        log_file, 
+        account=account if use_account_log else None
+    )
+    ctx.ensure_object(dict)
+    proxy = get_proxy(proxy)
+    if use_account_log:
         if proxy:
             logger.info(
                 "Using proxy: %s"

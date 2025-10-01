@@ -1,11 +1,17 @@
 {
+  "_comment_file": "这是一个完整的机器人配置示例文件，通过 'tg-signer bot init' 命令创建",
+  "_comment_usage": "使用方法：复制到 .signer/bot_configs/ 目录下并根据需要修改，然后使用 'tg-signer -a <账号名> bot run <配置名>' 运行",
   "chat_id": -1001234567890,
   "name": "仙门频道示例",
+  
+  "_comment_daily": "每日任务配置：点卯、传功、问安",
   "daily": {
     "enable_sign_in": true,
     "enable_transmission": true,
     "enable_greeting": false
   },
+  
+  "_comment_periodic": "周期任务配置：闭关、引道、启阵、问道、元婴、裂缝探索",
   "periodic": {
     "enable_qizhen": true,
     "enable_zhuzhen": true,
@@ -14,14 +20,16 @@
     "enable_yuanying": true,
     "enable_rift_explore": true
   },
-  "comment_periodic": "周期任务配置 - enable_yuanying控制元婴任务是否启用，无需手动继承或集成",
-  "comment_xiaozhi": "小智AI配置说明：authorized_users控制谁可以使用AI，运行时使用 --ai 标志启用聊天互动，不使用 --ai 时仅用于活动问答",
+  
+  "_comment_star": "观星台配置：默认关闭，启用后会自动安抚星辰、收集精华、按序列牵引",
   "star_observation": {
-    "enabled": true,
+    "enabled": false,
     "default_star": "天雷星",
     "plate_count": 5,
     "sequence": ["天雷星", "烈阳星", "玄冰星"]
   },
+  
+  "_comment_herb": "小药园配置：默认关闭，启用后会自动扫描、维护、采药、播种、兑换种子",
   "herb_garden": {
     "enabled": false,
     "default_seed": "凝血草种子",
@@ -42,27 +50,27 @@
     "post_harvest_rescan": 20,
     "seed_shortage_retry": 600
   },
+  
+  "_comment_xiaozhi": "小智AI配置：authorized_users控制授权用户，运行时使用 --ai 标志启用聊天互动，不使用 --ai 时仅用于活动问答",
   "xiaozhi_ai": {
-    "authorized_users": [123456789],
+    "authorized_users": [],
     "filter_keywords": ["广告", "刷屏"],
     "blacklist_users": [],
     "trigger_keywords": ["@小智", "小智AI", "xiaozhi"],
     "response_prefix": "小智AI回复: ",
     "debug": false
   },
+  
+  "_comment_activity": "活动管理器配置：支持魂魄献祭、天机考验、虚天殿问答、洞府访客、宗门拍卖等",
   "activity": {
     "enabled": true,
     "rules_extra": []
   },
-  "custom_rules": [
-    {
-      "pattern": "测试.*",
-      "response": "这是自动回复",
-      "cooldown_seconds": 300,
-      "priority": 5,
-      "enabled": true
-    }
-  ],
+  
+  "_comment_custom": "自定义规则：支持正则匹配和自定义回复",
+  "custom_rules": [],
+  
+  "_comment_intervals": "时间间隔配置：sign_interval控制任务执行间隔，min_send_interval控制最小发送间隔",
   "sign_interval": 10.0,
   "min_send_interval": 1.0
 }
